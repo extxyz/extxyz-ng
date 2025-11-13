@@ -28,11 +28,44 @@ pub enum Value {
     MatrixFloat(Vec<Vec<f64>>),
     MatrixBool(Vec<Vec<bool>>),
     MatrixStr(Vec<Vec<String>>),
-    Dict(HashMap<String, Value>),
     Unsupported,
 }
 
-#[allow(clippy::too_many_lines)]
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt_array<T: std::fmt::Display>(arr: &[T]) -> String {
+            arr.iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+
+        fn fmt_matrix<T: std::fmt::Display>(matrix: &[Vec<T>]) -> String {
+            matrix
+                .iter()
+                .map(|row| format!("[{}]", fmt_array(row)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+
+        match self {
+            Value::Int(v) => write!(f, "{v}"),
+            Value::Float(v) => write!(f, "{v}"),
+            Value::Bool(v) => write!(f, "{v}"),
+            Value::Str(s) => write!(f, "{s}"),
+            Value::IntArray(arr) => write!(f, "[{}]", fmt_array(arr)),
+            Value::FloatArray(arr) => write!(f, "[{}]", fmt_array(arr)),
+            Value::BoolArray(arr) => write!(f, "[{}]", fmt_array(arr)),
+            Value::StrArray(arr) => write!(f, "[{}]", fmt_array(arr)),
+            Value::MatrixInt(matrix) => write!(f, "[{}]", fmt_matrix(matrix)),
+            Value::MatrixFloat(matrix) => write!(f, "[{}]", fmt_matrix(matrix)),
+            Value::MatrixBool(matrix) => write!(f, "[{}]", fmt_matrix(matrix)),
+            Value::MatrixStr(matrix) => write!(f, "[{}]", fmt_matrix(matrix)),
+            Value::Unsupported => write!(f, "<unsupported>"),
+        }
+    }
+}
+
 #[allow(clippy::cast_sign_loss)]
 unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> HashMap<String, Value> {
     let mut map = HashMap::new();
@@ -151,34 +184,55 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> HashMap<String, Val
 
 // Safe hardler for `DictEntry`
 #[derive(Debug)]
-pub struct DictHandler {
-    data: HashMap<String, Value>,
-}
+pub struct DictHandler(HashMap<String, Value>);
 
 impl DictHandler {
+    /// Create an owned dict from ptr.
+    ///
+    /// # Safety
+    ///
+    /// public function might dereference a raw pointer but is not marked `unsafe`.
+    /// Make sure the raw ptr is valid.
     pub unsafe fn new(ptr: *mut dict_entry_struct) -> Self {
         let data = unsafe { c_to_rust_dict(ptr) };
-        DictHandler { data }
+        DictHandler(data)
+    }
+
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.0.get(key)
     }
 }
 
-/// Safe wrapper of unsafe c api for `extxyz_read_ll` function
-/// It returns, (natoms, info, arrays, comments) as a fallible result
+/// Safe wrapper around the unsafe C API function `extxyz_read_ll`.
+///
+/// Returns `(natoms, info, arrays, comments)` as a fallible `Result`.
 ///
 /// # Errors
 ///
-/// error when input contains null byte
-/// error when unable to read input in unsafe block
-/// error when unsafe ``extxyz_read_ll`` call failed
-pub fn extxyz_read(input: &str) -> Result<(i32, DictHandler, DictHandler, String), io::Error> {
+/// - If the input contains a null byte.
+/// - If reading the input inside the unsafe block fails.
+/// - If the unsafe `extxyz_read_ll` call returns an error.
+///
+/// # Panics
+///
+/// - If initialization of a `CString` fails.
+pub fn extxyz_read(
+    input: &str,
+    comment_override: Option<&str>,
+) -> Result<(i32, DictHandler, DictHandler), io::Error> {
     let kv_grammar = unsafe { compile_extxyz_kv_grammar() };
 
     // Prepare output variables
     let mut nat: i32 = 0;
 
-    // allocate buffer for comment
-    let mut comment_buf = vec![0u8; 2048];
-    let comment_ptr = comment_buf.as_mut_ptr().cast::<i8>();
+    let comment_ptr = match comment_override {
+        Some(_) => {
+            let mut comment_buf = vec![0; 1024];
+            comment_buf.as_mut_ptr().cast::<i8>()
+        }
+        None => std::ptr::null_mut(),
+    };
 
     // allocate pointer for info ptr and arrays ptr
     // NOTE: the info and arrays are ptr and they are allocated within the `extxyz_read_ll`
@@ -194,7 +248,9 @@ pub fn extxyz_read(input: &str) -> Result<(i32, DictHandler, DictHandler, String
         let fp = fmemopen(
             bytes.as_mut_ptr().cast::<libc::c_void>(),
             bytes.len(),
-            CString::new("r").unwrap().as_ptr(),
+            CString::new("r")
+                .expect("cannot have internal 0 byte")
+                .as_ptr(),
         );
         if fp.is_null() {
             return Err(io::Error::other("Failed to open file"));
@@ -216,23 +272,12 @@ pub fn extxyz_read(input: &str) -> Result<(i32, DictHandler, DictHandler, String
         err_cstr.to_string_lossy()
     };
 
-    // NOTE: extxyz use 1 for success, which is .... those fucking scientist.
+    // NOTE: extxyz use 1 for success 0 for failed state code, fuckers
     if ret != 1 {
         return Err(io::Error::other(format!(
-            "extxyz_read_ll failed, errno: {ret}, msg: {err_msg}",
+            "extxyz_read_ll failed with msg: {err_msg}",
         )));
     }
-
-    // convert comment buffer to Rust String
-    let comment = unsafe {
-        std::ffi::CStr::from_ptr(comment_ptr)
-            .to_string_lossy()
-            .into_owned()
-    };
-
-    unsafe {
-        print_dict(info);
-    };
 
     // own the dict and it will be dropped after use.
     let (info_val, arrays_val) = unsafe { (DictHandler::new(info), DictHandler::new(arrays)) };
@@ -242,7 +287,7 @@ pub fn extxyz_read(input: &str) -> Result<(i32, DictHandler, DictHandler, String
         free_dict(arrays);
     }
 
-    Ok((nat, info_val, arrays_val, comment))
+    Ok((nat, info_val, arrays_val))
 }
 
 #[cfg(test)]
@@ -258,11 +303,14 @@ C         -1.15405        2.86652       -1.26699
 C         -5.53758        3.70936        0.63504
 C         -7.28250        4.71303       -3.82016
 "#;
-        let (natoms, info, arr, comment) = extxyz_read(inp).unwrap();
+        let (natoms, info, arr) = extxyz_read(inp, None).unwrap();
 
-        // dbg!(natoms);
-        dbg!(info);
-        // dbg!(arr);
-        // dbg!(comment);
+        assert_eq!(natoms, 4);
+        assert_eq!(format!("{}", info.get("key1").unwrap()), "a");
+        assert_eq!(format!("{}", info.get("key2").unwrap()), "a/b");
+        assert_eq!(format!("{}", info.get("key3").unwrap()), "a@b");
+        assert_eq!(format!("{}", info.get("key4").unwrap()), "a@b");
+        assert_eq!(format!("{}", arr.get("species").unwrap()), "[Mg, C, C, C]");
+        assert_eq!(format!("{}", arr.get("pos").unwrap()), "[[-4.2565, 3.7918, -2.54123], [-1.15405, 2.86652, -1.26699], [-5.53758, 3.70936, 0.63504], [-7.2825, 4.71303, -3.82016]]");
     }
 }
