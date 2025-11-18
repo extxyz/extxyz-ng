@@ -3,7 +3,6 @@ name = "extxyz"
 description = "Safe API for dealing with xyz (and extxyz) format for material structure"
 authors = ["Jusong Yu <jusong.yu@pm.me>"]
 repository = "https://github.com/ccmat-org/extxyz-rs"
-build = "build.rs"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["physics", "chemistry"]
