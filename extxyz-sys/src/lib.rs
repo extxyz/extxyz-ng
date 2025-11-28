@@ -253,28 +253,6 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
             }
 
             data_type_data_s => {
-                // let slice =
-                //     unsafe { slice::from_raw_parts(entry.data as *const *const i8, nrows * ncols) };
-                // if nrows == 1 && ncols == 1 {
-                //     let s = unsafe { CStr::from_ptr(slice[0]).to_string_lossy().into_owned() };
-                //     Value::Str(s)
-                // } else if nrows == 1 {
-                //     let vec: Vec<String> = slice
-                //         .iter()
-                //         .map(|&p| unsafe { CStr::from_ptr(p).to_string_lossy().into_owned() })
-                //         .collect();
-                //     Value::StrVector(vec)
-                // } else {
-                //     let mut matrix = Vec::with_capacity(nrows);
-                //     for r in 0..nrows {
-                //         let row = slice[r * ncols..(r + 1) * ncols]
-                //             .iter()
-                //             .map(|&p| unsafe { CStr::from_ptr(p).to_string_lossy().into_owned() })
-                //             .collect();
-                //         matrix.push(row);
-                //     }
-                //     Value::MatrixStr(matrix)
-                // }
                 let slice =
                     unsafe { slice::from_raw_parts(entry.data as *const *const i8, nrows * ncols) };
 
@@ -329,7 +307,7 @@ impl DictHandler {
     ///
     /// public function might dereference a raw pointer but is not marked `unsafe`.
     /// Make sure the raw ptr is valid.
-    pub unsafe fn new(ptr: *mut dict_entry_struct) -> Self {
+    unsafe fn new(ptr: *mut dict_entry_struct) -> Self {
         let data = c_to_rust_dict(ptr);
         DictHandler(data)
     }
@@ -477,6 +455,21 @@ where
     Ok(())
 }
 
+fn write_vec<T, W>(w: &mut BufWriter<W>, s: &[T]) -> Result<()>
+where
+    T: std::fmt::Display,
+    W: Write,
+{
+    let indent = " ".repeat(4);
+    let s = s
+        .iter()
+        .map(|i| format!("{i}"))
+        .collect::<Vec<_>>()
+        .join(&indent);
+    write!(w, "{s}")?;
+    Ok(())
+}
+
 /// instead of calling c api, it is easier to reimplement it, because I don't need to do parsing.
 /// since it is rust, performance wise also compatible with c implementation and safe.
 ///
@@ -578,44 +571,20 @@ pub fn extxyz_write<W: Write>(
                 Value::VecBool(items) => write!(w, "{}", items[i as usize])?,
                 Value::VecText(items) => write!(w, "{}", items[i as usize])?,
                 Value::MatrixInteger(items) => {
-                    let indent = " ".repeat(4);
                     let s = &items[i as usize];
-                    let s = s
-                        .iter()
-                        .map(|i| format!("{i}"))
-                        .collect::<Vec<_>>()
-                        .join(&indent);
-                    write!(w, "{s}")?;
+                    write_vec(w, s)?;
                 }
                 Value::MatrixFloat(items) => {
-                    let indent = " ".repeat(4);
                     let s = &items[i as usize];
-                    let s = s
-                        .iter()
-                        .map(|i| format!("{i}"))
-                        .collect::<Vec<_>>()
-                        .join(&indent);
-                    write!(w, "{s}")?;
+                    write_vec(w, s)?;
                 }
                 Value::MatrixBool(items) => {
-                    let indent = " ".repeat(4);
                     let s = &items[i as usize];
-                    let s = s
-                        .iter()
-                        .map(|i| format!("{i}"))
-                        .collect::<Vec<_>>()
-                        .join(&indent);
-                    write!(w, "{s}")?;
+                    write_vec(w, s)?;
                 }
                 Value::MatrixText(items) => {
-                    let indent = " ".repeat(4);
                     let s = &items[i as usize];
-                    let s = s
-                        .iter()
-                        .map(|i| format!("{i}"))
-                        .collect::<Vec<_>>()
-                        .join(&indent);
-                    write!(w, "{s}")?;
+                    write_vec(w, s)?;
                 }
                 _ => {
                     // this is unreachable if the inner dict is not create manually
