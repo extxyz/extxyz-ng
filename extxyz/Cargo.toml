@@ -1,8 +1,8 @@
 [package]
-name = "extxyz"
-description = "Safe API for dealing with xyz (and extxyz) format for material structure"
+name = "extxyz-ng"
+description = "extxyz format reader and writer"
 authors = ["Jusong Yu <jusong.yu@pm.me>"]
-repository = "https://github.com/ccmat-org/extxyz-rs"
+repository = "https://github.com/extxyz/extxyz-ng"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["physics", "chemistry"]

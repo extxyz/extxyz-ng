@@ -1,6 +1,9 @@
-# extxyz-rs
+# extxyz-ng
 
-rust interface for libAtoms/extxyz
+- `extxyz` format reader and writer **in Rust**
+- full compatibility with the C implementation ([`libAtom/extxyz`](github.com/libAtoms/extxyz)) via its Rust wrapper ([`extxyz-sys`](https://crates.io/crates/extxyz-sys))
+- guarantees memory safety with **no segmentation faults**
+- provides clear and user-friendly error messages during parsing
 
 ## dev
 
