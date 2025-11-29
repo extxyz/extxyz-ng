@@ -5,13 +5,13 @@
 #![allow(clippy::if_not_else)]
 #![allow(clippy::too_many_lines, clippy::useless_format)]
 #![allow(clippy::match_bool)]
-#![allow(clippy::cast_sign_loss, clippy::too_many_lines)]
+#![allow(clippy::cast_sign_loss)]
 #![allow(clippy::needless_range_loop)]
 
 use std::{
     borrow::Cow,
     ffi::{CStr, CString},
-    io::{self, BufWriter, Write},
+    io::{self, BufReader, BufWriter, Read, Write},
     slice,
 };
 
@@ -347,8 +347,8 @@ impl DictHandler {
 /// XXX: the general wrapper takes *mut FILE as argument, and can then have
 /// - `extxyz_read_from_file` and
 /// - `extxyz_read_from_str`.
-pub fn extxyz_read(
-    input: &str,
+pub fn frame_read<T: Read>(
+    mut rd: BufReader<T>,
     comment_override: Option<&str>,
 ) -> Result<(u32, DictHandler, DictHandler)> {
     let kv_grammar = unsafe { compile_extxyz_kv_grammar() };
@@ -373,7 +373,9 @@ pub fn extxyz_read(
     let mut error_message = vec![0u8; 1024];
     let error_ptr = error_message.as_mut_ptr().cast::<i8>();
 
-    let mut bytes = input.as_bytes().to_vec();
+    let mut buf = Vec::new();
+    rd.read_to_end(&mut buf)?;
+    let mut bytes = buf;
     let fp = unsafe {
         fmemopen(
             bytes.as_mut_ptr().cast::<libc::c_void>(),
@@ -475,7 +477,7 @@ where
 ///
 /// # Errors
 /// ???
-pub fn extxyz_write<W: Write>(
+pub fn frame_write<W: Write>(
     w: &mut BufWriter<W>,
     natoms: u32,
     info: &DictHandler,
@@ -607,7 +609,38 @@ pub fn extxyz_write<W: Write>(
 
 #[cfg(test)]
 mod test {
+    use std::io::Cursor;
+
     use super::*;
+
+    // helpers only for test
+    impl Value {
+        fn eq_approx(&self, other: &Value) -> bool {
+            // hardcode tol = 1e-5
+            let tol = 1e-5;
+            match (self, other) {
+                (Value::Integer(a), Value::Integer(b)) => a.0.abs_diff(b.0) == 0,
+                (Value::MatrixFloat(a), Value::MatrixFloat(b)) => {
+                    if a.len() != b.len() {
+                        return false;
+                    }
+                    for (ax, bx) in a.iter().zip(b.iter()) {
+                        if ax.len() != bx.len() {
+                            return false;
+                        }
+                        for (v, u) in ax.iter().zip(bx.iter()) {
+                            if f64::abs(v.0 - u.0) > tol {
+                                return false;
+                            }
+                        }
+                    }
+
+                    true
+                }
+                _ => false,
+            }
+        }
+    }
 
     // a round trip read and write
     #[test]
@@ -619,19 +652,18 @@ C         -1.15405        2.86652       -1.26699
 C         -5.53758        3.70936        0.63504
 C         -7.28250        4.71303       -3.82016
 "#;
-        let (natoms, info, arrs) = extxyz_read(inp, None).unwrap();
+        let rd = BufReader::new(Cursor::new(inp.as_bytes()));
+        let (natoms, info, arrs) = frame_read(rd, None).unwrap();
 
         let mut buf = Vec::new();
         {
             let mut writer = BufWriter::new(&mut buf);
-            assert!(extxyz_write(&mut writer, natoms, &info, &arrs).is_ok());
+            assert!(frame_write(&mut writer, natoms, &info, &arrs).is_ok());
             writer.flush().unwrap();
         }
 
-        let s = String::from_utf8_lossy(&buf);
-        println!("{s}");
-
-        let (natoms, info, arrs) = extxyz_read(&s, None).unwrap();
+        let rd = BufReader::new(&buf[..]);
+        let (natoms, info, arrs) = frame_read(rd, None).unwrap();
 
         assert_eq!(natoms, 4);
         assert_eq!(format!("{}", info.get("key1").unwrap()), "a");
@@ -639,6 +671,14 @@ C         -7.28250        4.71303       -3.82016
         assert_eq!(format!("{}", info.get("key3").unwrap()), "a@b");
         assert_eq!(format!("{}", info.get("key4").unwrap()), "a@b");
         assert_eq!(format!("{}", arrs.get("species").unwrap()), "[Mg, C, C, C]");
-        assert_eq!(format!("{}", arrs.get("pos").unwrap()), "[[     -4.25650000,       3.79180000,      -2.54123000], [     -1.15405000,       2.86652000,      -1.26699000], [     -5.53758000,       3.70936000,       0.63504000], [     -7.28250000,       4.71303000,      -3.82016000]]");
+
+        let pos_got = arrs.get("pos").unwrap();
+        let pos_expect = Value::MatrixFloat(Vec::from([
+            Vec::from([FloatNum(-4.25650), FloatNum(3.79180), FloatNum(-2.54123)]),
+            Vec::from([FloatNum(-1.15405), FloatNum(2.86652), FloatNum(-1.26699)]),
+            Vec::from([FloatNum(-5.53758), FloatNum(3.70936), FloatNum(0.63504)]),
+            Vec::from([FloatNum(-7.28250), FloatNum(4.71303), FloatNum(-3.82016)]),
+        ]));
+        assert!(pos_got.eq_approx(&pos_expect));
     }
 }
