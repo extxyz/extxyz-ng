@@ -11,7 +11,7 @@
 use std::{
     borrow::Cow,
     ffi::{CStr, CString},
-    io::{self, BufReader, BufWriter, Read, Write},
+    io::{self, BufRead, Write},
     slice,
 };
 
@@ -347,8 +347,8 @@ impl DictHandler {
 /// XXX: the general wrapper takes *mut FILE as argument, and can then have
 /// - `extxyz_read_from_file` and
 /// - `extxyz_read_from_str`.
-pub fn frame_read<T: Read>(
-    mut rd: BufReader<T>,
+pub fn read_frame<R: BufRead>(
+    mut rd: R,
     comment_override: Option<&str>,
 ) -> Result<(u32, DictHandler, DictHandler)> {
     let kv_grammar = unsafe { compile_extxyz_kv_grammar() };
@@ -425,7 +425,7 @@ pub fn frame_read<T: Read>(
     Ok((nat as u32, info_val, arrays_val))
 }
 
-fn write_lattice<T, W>(w: &mut BufWriter<W>, m: &[Vec<T>]) -> Result<()>
+fn write_lattice<T, W>(w: &mut W, m: &[Vec<T>]) -> Result<()>
 where
     T: Default + std::fmt::Display + Copy,
     W: Write,
@@ -457,7 +457,7 @@ where
     Ok(())
 }
 
-fn write_vec<T, W>(w: &mut BufWriter<W>, s: &[T]) -> Result<()>
+fn write_vec<T, W>(w: &mut W, s: &[T]) -> Result<()>
 where
     T: std::fmt::Display,
     W: Write,
@@ -477,8 +477,8 @@ where
 ///
 /// # Errors
 /// ???
-pub fn frame_write<W: Write>(
-    w: &mut BufWriter<W>,
+pub fn write_frame<W: Write>(
+    w: &mut W,
     natoms: u32,
     info: &DictHandler,
     arrs: &DictHandler,
@@ -609,7 +609,7 @@ pub fn frame_write<W: Write>(
 
 #[cfg(test)]
 mod test {
-    use std::io::Cursor;
+    use std::io::{BufWriter, Cursor};
 
     use super::*;
 
@@ -652,18 +652,17 @@ C         -1.15405        2.86652       -1.26699
 C         -5.53758        3.70936        0.63504
 C         -7.28250        4.71303       -3.82016
 "#;
-        let rd = BufReader::new(Cursor::new(inp.as_bytes()));
-        let (natoms, info, arrs) = frame_read(rd, None).unwrap();
+        let rd = Cursor::new(inp.as_bytes());
+        let (natoms, info, arrs) = read_frame(rd, None).unwrap();
 
         let mut buf = Vec::new();
         {
             let mut writer = BufWriter::new(&mut buf);
-            assert!(frame_write(&mut writer, natoms, &info, &arrs).is_ok());
+            assert!(write_frame(&mut writer, natoms, &info, &arrs).is_ok());
             writer.flush().unwrap();
         }
 
-        let rd = BufReader::new(&buf[..]);
-        let (natoms, info, arrs) = frame_read(rd, None).unwrap();
+        let (natoms, info, arrs) = read_frame(&buf[..], None).unwrap();
 
         assert_eq!(natoms, 4);
         assert_eq!(format!("{}", info.get("key1").unwrap()), "a");
