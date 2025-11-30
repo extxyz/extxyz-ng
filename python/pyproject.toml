@@ -16,11 +16,17 @@ dynamic = ["version"]
 features = ["pyo3/extension-module"]
 python-source = "."
 
-[tool.uv]
-dev-dependencies = ["pip", "pytest>=8.0.2", "ruff>=0.8.0", "pre-commit>=4.0.1"]
-
 [dependency-groups]
+dev = [
+    "pip", 
+    "pytest>=8.0.2", 
+    "ruff>=0.8.0", 
+    "pre-commit>=4.0.1"
+]
+
+[project.optional-dependencies]
 tests = [
     "pytest~=8.3",
+    "extxyz==0.1.3",
 ]
 
