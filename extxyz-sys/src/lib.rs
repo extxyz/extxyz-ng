@@ -348,7 +348,7 @@ impl DictHandler {
 /// - `extxyz_read_from_file` and
 /// - `extxyz_read_from_str`.
 pub fn read_frame<R: BufRead>(
-    mut rd: R,
+    rd: &mut R,
     comment_override: Option<&str>,
 ) -> Result<(u32, DictHandler, DictHandler)> {
     let kv_grammar = unsafe { compile_extxyz_kv_grammar() };
@@ -652,8 +652,8 @@ C         -1.15405        2.86652       -1.26699
 C         -5.53758        3.70936        0.63504
 C         -7.28250        4.71303       -3.82016
 "#;
-        let rd = Cursor::new(inp.as_bytes());
-        let (natoms, info, arrs) = read_frame(rd, None).unwrap();
+        let mut rd = Cursor::new(inp.as_bytes());
+        let (natoms, info, arrs) = read_frame(&mut rd, None).unwrap();
 
         let mut buf = Vec::new();
         {
@@ -662,7 +662,8 @@ C         -7.28250        4.71303       -3.82016
             writer.flush().unwrap();
         }
 
-        let (natoms, info, arrs) = read_frame(&buf[..], None).unwrap();
+        let mut cur = Cursor::new(&buf[..]);
+        let (natoms, info, arrs) = read_frame(&mut cur, None).unwrap();
 
         assert_eq!(natoms, 4);
         assert_eq!(format!("{}", info.get("key1").unwrap()), "a");
