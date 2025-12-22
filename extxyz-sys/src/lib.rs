@@ -27,6 +27,24 @@ pub enum CextxyzError {
     InvalidValue(&'static str),
 }
 
+impl std::fmt::Display for CextxyzError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CextxyzError::Io(error) => write!(f, "{error}"),
+            CextxyzError::InvalidValue(err) => write!(f, "{err}"),
+        }
+    }
+}
+
+impl std::error::Error for CextxyzError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            CextxyzError::Io(error) => Some(error),
+            CextxyzError::InvalidValue(_) => None,
+        }
+    }
+}
+
 impl From<std::io::Error> for CextxyzError {
     fn from(value: std::io::Error) -> Self {
         CextxyzError::Io(value)

@@ -12,6 +12,24 @@ pub enum ExtxyzError {
     WrapperError(CextxyzError),
 }
 
+impl std::fmt::Display for ExtxyzError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExtxyzError::Io(error) => write!(f, "{error}"),
+            ExtxyzError::WrapperError(cextxyz_error) => write!(f, "{cextxyz_error}"),
+        }
+    }
+}
+
+impl std::error::Error for ExtxyzError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ExtxyzError::Io(error) => Some(error),
+            ExtxyzError::WrapperError(cextxyz_error) => Some(cextxyz_error),
+        }
+    }
+}
+
 impl From<std::io::Error> for ExtxyzError {
     fn from(value: std::io::Error) -> Self {
         ExtxyzError::Io(value)
