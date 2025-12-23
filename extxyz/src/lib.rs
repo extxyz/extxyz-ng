@@ -1,10 +1,15 @@
-use std::io::{BufRead, Write};
+use std::{
+    collections::HashMap,
+    io::{BufRead, Write},
+};
 
 use extxyz_sys::{
     read_frame as _read_frame, write_frame as _write_frame, CextxyzError, DictHandler,
 };
 
 pub type Result<T> = std::result::Result<T, ExtxyzError>;
+
+pub use extxyz_sys::{Boolean, FloatNum, Integer, Text, Value};
 
 #[derive(Debug)]
 pub enum ExtxyzError {
@@ -46,6 +51,22 @@ pub struct Frame {
     natoms: u32,
     info: DictHandler,
     arrs: DictHandler,
+}
+
+impl Frame {
+    pub fn natoms(&self) -> u32 {
+        self.natoms
+    }
+
+    pub fn info(&self) -> HashMap<&str, &Value> {
+        let info = self.info.iter().map(|(k, v)| (k.as_str(), v));
+        HashMap::from_iter(info)
+    }
+
+    pub fn arrs(&self) -> HashMap<&str, &Value> {
+        let arrs = self.arrs.iter().map(|(k, v)| (k.as_str(), v));
+        HashMap::from_iter(arrs)
+    }
 }
 
 pub fn read_frame<R>(rd: &mut R) -> Result<Frame>
