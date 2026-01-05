@@ -79,9 +79,21 @@ impl Frame {
         self.natoms
     }
 
-    /// Returns an iterator over the raw `arrs` key-value pairs.
-    pub fn arrs(&self) -> impl Iterator<Item = &(String, Value)> {
-        self.arrs.0.iter()
+    /// Returns the frame metadata (`info`) as a `HashMap` for easy lookup.
+    ///
+    /// Keys are `&str` slices pointing to the original `String`s inside
+    /// `DictHandler`, and values are references to `Value`.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let arrs_map = frame.arrs();
+    /// if let Some(pos) = arrs_map.get("pos") {
+    ///     println!("Positions: {:?}", pos);
+    /// }
+    /// ```
+    pub fn arrs(&self) -> HashMap<&str, &Value> {
+        let arrs = self.arrs.iter().map(|(k, v)| (k.as_str(), v));
+        HashMap::from_iter(arrs)
     }
 
     /// Returns the frame metadata (`info`) as a `HashMap` for easy lookup.
@@ -177,6 +189,8 @@ where
         // the inner datastructure will store "Properties" as a key (if exist), but in the
         // write function the Properties field is deduct from the arr.
         // When read the xyz may not have "Properties" field, but write will always have it.
+        // XXX: therefore in the read (the parser, if I impl myself) need to validate the
+        // properties is conform with what provided.
         if k.as_str() == "Properties" {
             continue;
         }
@@ -257,6 +271,7 @@ where
         while let Some((_, v)) = iter.next() {
             let i = i as usize;
 
+            // store the columns but write row by row
             match v {
                 Value::VecInteger(items, _) => write!(w, "{}", items[i])?,
                 Value::VecFloat(items, _) => write!(w, "{}", items[i])?,
