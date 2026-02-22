@@ -1,3 +1,4 @@
 [workspace]
 resolver = "3"
-members = ["extxyz-sys", "extxyz"]
+members = ["extxyz-sys", "extxyz", "extxyz-types"]
+
