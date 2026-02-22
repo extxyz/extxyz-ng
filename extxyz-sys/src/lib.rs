@@ -11,7 +11,8 @@
 use std::{
     borrow::Cow,
     ffi::{CStr, CString},
-    io::{self, BufReader, BufWriter, Read, Write},
+    io::{self, BufRead},
+    ops::Deref,
     slice,
 };
 
@@ -27,6 +28,24 @@ pub enum CextxyzError {
     InvalidValue(&'static str),
 }
 
+impl std::fmt::Display for CextxyzError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CextxyzError::Io(error) => write!(f, "{error}"),
+            CextxyzError::InvalidValue(err) => write!(f, "{err}"),
+        }
+    }
+}
+
+impl std::error::Error for CextxyzError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            CextxyzError::Io(error) => Some(error),
+            CextxyzError::InvalidValue(_) => None,
+        }
+    }
+}
+
 impl From<std::io::Error> for CextxyzError {
     fn from(value: std::io::Error) -> Self {
         CextxyzError::Io(value)
@@ -35,7 +54,8 @@ impl From<std::io::Error> for CextxyzError {
 
 /// checking special characters escape and escape as needed, using Cow because most string won't
 /// need quoting.
-fn escape(s: &str) -> Cow<'_, str> {
+#[must_use]
+pub fn escape(s: &str) -> Cow<'_, str> {
     let needs_quoting = s.chars().any(|c| {
         matches!(
             c,
@@ -63,14 +83,132 @@ fn escape(s: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+/// A newtype wrapper around `i32` that dereferences to `i32`.
+///
+/// # Deref coercion
+///
+/// `Integer` implements `Deref<Target = i32>`, allowing `&Integer` to be used
+/// wherever `&i32` is expected.
+///
+/// ```
+/// use extxyz_sys::Integer;
+///
+/// fn takes_i32(x: &i32) {}
+///
+/// let n = Integer::from(42);
+/// takes_i32(&n);
+/// ```
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Integer(i32);
+
+/// A newtype wrapper around `f64` that dereferences to `f64`.
+///
+/// # Deref coercion
+///
+/// `FloatNum` implements `Deref<Target = f64>`, allowing `&FloatNum` to be used
+/// wherever `&f64` is expected.
+///
+/// ```
+/// use extxyz_sys::FloatNum;
+///
+/// fn takes_f64(x: &f64) {}
+///
+/// let x = FloatNum::from(3.14);
+/// takes_f64(&x);
+/// ```
 #[derive(Debug, Default, Copy, Clone)]
 pub struct FloatNum(f64);
+
+/// A newtype wrapper around `bool` that dereferences to `bool`.
+///
+/// # Deref coercion
+///
+/// `Boolean` implements `Deref<Target = bool>`, allowing `&Boolean` to be used
+/// wherever `&bool` is expected.
+///
+/// ```
+/// use extxyz_sys::Boolean;
+///
+/// fn takes_bool(x: &bool) {}
+///
+/// let b = Boolean::from(true);
+/// takes_bool(&b);
+/// ```
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Boolean(bool);
+
+/// A newtype wrapper around `String` that dereferences to `str`.
+///
+/// # Deref coercion
+///
+/// `Text` implements `Deref<Target = str>`, allowing `&Text` to be used
+/// wherever `&str` is expected.
+///
+/// ```
+/// use extxyz_sys::Text;
+///
+/// fn takes_str(s: &str) {}
+///
+/// let t = Text::from("hello");
+/// takes_str(&t);
+/// ```
 #[derive(Debug, Default)]
 pub struct Text(String);
+
+impl Deref for Integer {
+    type Target = i32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl Deref for FloatNum {
+    type Target = f64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl Deref for Boolean {
+    type Target = bool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl Deref for Text {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<i32> for Integer {
+    fn from(value: i32) -> Self {
+        Self(value)
+    }
+}
+impl From<f64> for FloatNum {
+    fn from(value: f64) -> Self {
+        Self(value)
+    }
+}
+impl From<bool> for Boolean {
+    fn from(value: bool) -> Self {
+        Self(value)
+    }
+}
+impl From<String> for Text {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+impl From<&str> for Text {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
 
 // In the c impl the output format to:
 // #define INTEGER_FMT "%8d"
@@ -108,14 +246,14 @@ pub enum Value {
     Float(FloatNum),
     Bool(Boolean),
     Str(Text),
-    VecInteger(Vec<Integer>),
-    VecFloat(Vec<FloatNum>),
-    VecBool(Vec<Boolean>),
-    VecText(Vec<Text>),
-    MatrixInteger(Vec<Vec<Integer>>),
-    MatrixFloat(Vec<Vec<FloatNum>>),
-    MatrixBool(Vec<Vec<Boolean>>),
-    MatrixText(Vec<Vec<Text>>),
+    VecInteger(Vec<Integer>, u32),
+    VecFloat(Vec<FloatNum>, u32),
+    VecBool(Vec<Boolean>, u32),
+    VecText(Vec<Text>, u32),
+    MatrixInteger(Vec<Vec<Integer>>, (u32, u32)),
+    MatrixFloat(Vec<Vec<FloatNum>>, (u32, u32)),
+    MatrixBool(Vec<Vec<Boolean>>, (u32, u32)),
+    MatrixText(Vec<Vec<Text>>, (u32, u32)),
     Unsupported,
 }
 
@@ -141,14 +279,14 @@ impl std::fmt::Display for Value {
             Value::Float(v) => write!(f, "{v}"),
             Value::Bool(v) => write!(f, "{v}"),
             Value::Str(v) => write!(f, "{v}"),
-            Value::VecInteger(arr) => write!(f, "[{}]", fmt_array(arr)),
-            Value::VecFloat(arr) => write!(f, "[{}]", fmt_array(arr)),
-            Value::VecBool(arr) => write!(f, "[{}]", fmt_array(arr)),
-            Value::VecText(arr) => write!(f, "[{}]", fmt_array(arr)),
-            Value::MatrixInteger(matrix) => write!(f, "[{}]", fmt_matrix(matrix)),
-            Value::MatrixFloat(matrix) => write!(f, "[{}]", fmt_matrix(matrix)),
-            Value::MatrixBool(matrix) => write!(f, "[{}]", fmt_matrix(matrix)),
-            Value::MatrixText(matrix) => write!(f, "[{}]", fmt_matrix(matrix)),
+            Value::VecInteger(arr, _) => write!(f, "[{}]", fmt_array(arr)),
+            Value::VecFloat(arr, _) => write!(f, "[{}]", fmt_array(arr)),
+            Value::VecBool(arr, _) => write!(f, "[{}]", fmt_array(arr)),
+            Value::VecText(arr, _) => write!(f, "[{}]", fmt_array(arr)),
+            Value::MatrixInteger(matrix, _) => write!(f, "[{}]", fmt_matrix(matrix)),
+            Value::MatrixFloat(matrix, _) => write!(f, "[{}]", fmt_matrix(matrix)),
+            Value::MatrixBool(matrix, _) => write!(f, "[{}]", fmt_matrix(matrix)),
+            Value::MatrixText(matrix, _) => write!(f, "[{}]", fmt_matrix(matrix)),
             Value::Unsupported => write!(f, "<unsupported>"),
         }
     }
@@ -187,18 +325,24 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
                 if nrows == 1 && ncols == 1 {
                     Value::Integer(Integer(slice[0]))
                 } else if nrows == 1 {
-                    let vecint = slice.iter().map(|i| Integer(*i)).collect::<Vec<Integer>>();
-                    Value::VecInteger(vecint)
+                    let vec = slice.iter().map(|i| Integer(*i)).collect::<Vec<Integer>>();
+                    Value::VecInteger(vec, u32::try_from(ncols).expect("ncols out of u32 bound"))
                 } else {
                     let mut matrix = Vec::with_capacity(nrows);
                     for r in 0..nrows {
-                        let vecint = slice[r * ncols..(r + 1) * ncols]
+                        let vec = slice[r * ncols..(r + 1) * ncols]
                             .iter()
                             .map(|i| Integer(*i))
                             .collect::<Vec<Integer>>();
-                        matrix.push(vecint);
+                        matrix.push(vec);
                     }
-                    Value::MatrixInteger(matrix)
+                    Value::MatrixInteger(
+                        matrix,
+                        (
+                            u32::try_from(nrows).expect("nrows out of u32 bound"),
+                            u32::try_from(ncols).expect("ncols out of u32 bound"),
+                        ),
+                    )
                 }
             }
 
@@ -209,21 +353,27 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
                 if nrows == 1 && ncols == 1 {
                     Value::Float(FloatNum(slice[0]))
                 } else if nrows == 1 {
-                    let vecint = slice
+                    let vec = slice
                         .iter()
                         .map(|i| FloatNum(*i))
                         .collect::<Vec<FloatNum>>();
-                    Value::VecFloat(vecint)
+                    Value::VecFloat(vec, u32::try_from(ncols).expect("ncols out of u32 bound"))
                 } else {
                     let mut matrix = Vec::with_capacity(nrows);
                     for r in 0..nrows {
-                        let vecint = slice[r * ncols..(r + 1) * ncols]
+                        let vec = slice[r * ncols..(r + 1) * ncols]
                             .iter()
                             .map(|i| FloatNum(*i))
                             .collect::<Vec<FloatNum>>();
-                        matrix.push(vecint);
+                        matrix.push(vec);
                     }
-                    Value::MatrixFloat(matrix)
+                    Value::MatrixFloat(
+                        matrix,
+                        (
+                            u32::try_from(nrows).expect("nrows out of u32 bound"),
+                            u32::try_from(ncols).expect("ncols out of u32 bound"),
+                        ),
+                    )
                 }
             }
 
@@ -234,21 +384,27 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
                 if nrows == 1 && ncols == 1 {
                     Value::Bool(Boolean(slice[0] != 0))
                 } else if nrows == 1 {
-                    let vecint = slice
+                    let vec = slice
                         .iter()
                         .map(|i| Boolean(*i != 0))
                         .collect::<Vec<Boolean>>();
-                    Value::VecBool(vecint)
+                    Value::VecBool(vec, u32::try_from(ncols).expect("ncols out of u32 bound"))
                 } else {
                     let mut matrix = Vec::with_capacity(nrows);
                     for r in 0..nrows {
-                        let vecint = slice[r * ncols..(r + 1) * ncols]
+                        let vec = slice[r * ncols..(r + 1) * ncols]
                             .iter()
                             .map(|i| Boolean(*i != 0))
                             .collect::<Vec<Boolean>>();
-                        matrix.push(vecint);
+                        matrix.push(vec);
                     }
-                    Value::MatrixBool(matrix)
+                    Value::MatrixBool(
+                        matrix,
+                        (
+                            u32::try_from(nrows).expect("nrows out of u32 bound"),
+                            u32::try_from(ncols).expect("ncols out of u32 bound"),
+                        ),
+                    )
                 }
             }
 
@@ -260,14 +416,14 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
                     let s = unsafe { CStr::from_ptr(slice[0]).to_string_lossy().into_owned() };
                     Value::Str(Text(s))
                 } else if nrows == 1 {
-                    let vecint = slice
+                    let vec = slice
                         .iter()
                         .map(|&ptr| {
                             let s = unsafe { CStr::from_ptr(ptr).to_string_lossy().into_owned() };
                             Text(s)
                         })
                         .collect::<Vec<Text>>();
-                    Value::VecText(vecint)
+                    Value::VecText(vec, u32::try_from(ncols).expect("ncols out of u32 bound"))
                 } else {
                     let mut matrix = Vec::with_capacity(nrows);
                     for r in 0..nrows {
@@ -281,7 +437,13 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
                             .collect::<Vec<Text>>();
                         matrix.push(vecint);
                     }
-                    Value::MatrixText(matrix)
+                    Value::MatrixText(
+                        matrix,
+                        (
+                            u32::try_from(nrows).expect("nrows out of u32 bound"),
+                            u32::try_from(ncols).expect("ncols out of u32 bound"),
+                        ),
+                    )
                 }
             }
 
@@ -298,7 +460,7 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
 
 // Safe hardler for `DictEntry`
 #[derive(Debug)]
-pub struct DictHandler(Vec<(String, Value)>);
+pub struct DictHandler(pub Vec<(String, Value)>);
 
 impl DictHandler {
     /// Create an owned dict from ptr.
@@ -327,6 +489,22 @@ impl DictHandler {
     }
 }
 
+impl<'a> DictHandler {
+    /// return an iter of `&(String, Value)`
+    pub fn iter(&'a self) -> std::slice::Iter<'a, (String, Value)> {
+        self.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a DictHandler {
+    type Item = &'a (String, Value);
+    type IntoIter = std::slice::Iter<'a, (String, Value)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
 /// Safe wrapper around the unsafe C API function `extxyz_read_ll`.
 ///
 /// TODO: `extxyz_read_ll` takes fp, which has an internal c buffer, the wrapper accept &str as input
@@ -347,8 +525,8 @@ impl DictHandler {
 /// XXX: the general wrapper takes *mut FILE as argument, and can then have
 /// - `extxyz_read_from_file` and
 /// - `extxyz_read_from_str`.
-pub fn frame_read<T: Read>(
-    mut rd: BufReader<T>,
+pub fn read_frame<R: BufRead>(
+    rd: &mut R,
     comment_override: Option<&str>,
 ) -> Result<(u32, DictHandler, DictHandler)> {
     let kv_grammar = unsafe { compile_extxyz_kv_grammar() };
@@ -423,262 +601,4 @@ pub fn frame_read<T: Read>(
     }
 
     Ok((nat as u32, info_val, arrays_val))
-}
-
-fn write_lattice<T, W>(w: &mut BufWriter<W>, m: &[Vec<T>]) -> Result<()>
-where
-    T: Default + std::fmt::Display + Copy,
-    W: Write,
-{
-    if m.len() != 3 {
-        return Err(CextxyzError::InvalidValue("expect 3x3 matrix"));
-    }
-
-    // transpose lattice matrix which has vectors in column-wise.
-    let mut m3 = [[T::default(); 3]; 3];
-
-    for i in 0..3 {
-        if m[i].len() != 3 {
-            return Err(CextxyzError::InvalidValue("expect 3x3 matrix"));
-        }
-        for j in 0..3 {
-            m3[i][j] = m[j][i];
-        }
-    }
-
-    write!(w, "\"")?;
-
-    m3.as_flattened()
-        .iter()
-        .try_for_each(|s| write!(w, "{s}"))?;
-
-    write!(w, "\"")?;
-
-    Ok(())
-}
-
-fn write_vec<T, W>(w: &mut BufWriter<W>, s: &[T]) -> Result<()>
-where
-    T: std::fmt::Display,
-    W: Write,
-{
-    let indent = " ".repeat(4);
-    let s = s
-        .iter()
-        .map(|i| format!("{i}"))
-        .collect::<Vec<_>>()
-        .join(&indent);
-    write!(w, "{s}")?;
-    Ok(())
-}
-
-/// instead of calling c api, it is easier to reimplement it, because I don't need to do parsing.
-/// since it is rust, performance wise also compatible with c implementation and safe.
-///
-/// # Errors
-/// ???
-pub fn frame_write<W: Write>(
-    w: &mut BufWriter<W>,
-    natoms: u32,
-    info: &DictHandler,
-    arrs: &DictHandler,
-) -> Result<()> {
-    writeln!(w, "{natoms}")?;
-
-    // info
-    let mut iter = info.0.iter().peekable();
-    while let Some((k, v)) = iter.next() {
-        // the inner datastructure will store "Properties" as a key (if exist), but in the
-        // write function the Properties field is deduct from the arr.
-        // When read the xyz may not have "Properties" field, but write will always have it.
-        if k.as_str() == "Properties" {
-            continue;
-        }
-
-        let s = escape(k);
-        write!(w, "{s}")?;
-        write!(w, "=")?;
-
-        // in extxyz c implementation, lattice treated different write in column-wise and use
-        // single space as spliter
-        if k.as_str() == "Lattice" {
-            match v {
-                Value::MatrixInteger(m) => {
-                    write_lattice(w, m)?;
-                }
-                Value::MatrixFloat(m) => {
-                    write_lattice(w, m)?;
-                }
-                Value::MatrixBool(m) => {
-                    write_lattice(w, m)?;
-                }
-                _ => {
-                    // this is unreachable if the inner dict is not create manually
-                    return Err(CextxyzError::InvalidValue(
-                        "Lattice must be a 3x3 int/float matrix",
-                    ));
-                }
-            }
-        } else {
-            write!(w, "{v}")?;
-        }
-
-        // only add a space if there is more to print in info array
-        if iter.peek().is_some() {
-            write!(w, " ")?;
-        }
-    }
-
-    // "Properties" deduct from the arrs
-    write!(w, " ")?;
-    write!(w, "Properties=")?;
-
-    let mut s = String::new();
-    let mut iter = arrs.0.iter().peekable();
-    // for (k, v) in &arrs.0 {
-    while let Some((k, v)) = iter.next() {
-        s.push_str(k);
-        s.push(':');
-        match v {
-            Value::VecInteger(_) => s.push_str("I:1"),
-            Value::VecFloat(_) => s.push_str("R:1"),
-            Value::VecBool(_) => s.push_str("L:1"),
-            Value::VecText(_) => s.push_str("S:1"),
-            Value::MatrixInteger(m) => s.push_str(format!("I:{}", m[0].len()).as_str()),
-            Value::MatrixFloat(m) => s.push_str(format!("R:{}", m[0].len()).as_str()),
-            Value::MatrixBool(m) => s.push_str(format!("L:{}", m[0].len()).as_str()),
-            Value::MatrixText(m) => s.push_str(format!("S:{}", m[0].len()).as_str()),
-            _ => {
-                // this is unreachable if the inner dict is not create manually
-                return Err(CextxyzError::InvalidValue(
-                    "arrs can only be vector or matrix",
-                ));
-            }
-        }
-
-        if iter.peek().is_some() {
-            s.push(':');
-        }
-    }
-    write!(w, "{}", escape(&s))?;
-    writeln!(w)?;
-
-    // arrays
-    for i in 0..natoms {
-        let mut iter = arrs.0.iter().peekable();
-        while let Some((_, v)) = iter.next() {
-            match v {
-                Value::VecInteger(items) => write!(w, "{}", items[i as usize])?,
-                Value::VecFloat(items) => write!(w, "{}", items[i as usize])?,
-                Value::VecBool(items) => write!(w, "{}", items[i as usize])?,
-                Value::VecText(items) => write!(w, "{}", items[i as usize])?,
-                Value::MatrixInteger(items) => {
-                    let s = &items[i as usize];
-                    write_vec(w, s)?;
-                }
-                Value::MatrixFloat(items) => {
-                    let s = &items[i as usize];
-                    write_vec(w, s)?;
-                }
-                Value::MatrixBool(items) => {
-                    let s = &items[i as usize];
-                    write_vec(w, s)?;
-                }
-                Value::MatrixText(items) => {
-                    let s = &items[i as usize];
-                    write_vec(w, s)?;
-                }
-                _ => {
-                    // this is unreachable if the inner dict is not create manually
-                    return Err(CextxyzError::InvalidValue(
-                        "arrs can only be vector or matrix",
-                    ));
-                }
-            }
-
-            if iter.peek().is_some() {
-                write!(w, "   ")?; // 3 spaces
-            }
-        }
-
-        writeln!(w)?;
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod test {
-    use std::io::Cursor;
-
-    use super::*;
-
-    // helpers only for test
-    impl Value {
-        fn eq_approx(&self, other: &Value) -> bool {
-            // hardcode tol = 1e-5
-            let tol = 1e-5;
-            match (self, other) {
-                (Value::Integer(a), Value::Integer(b)) => a.0.abs_diff(b.0) == 0,
-                (Value::MatrixFloat(a), Value::MatrixFloat(b)) => {
-                    if a.len() != b.len() {
-                        return false;
-                    }
-                    for (ax, bx) in a.iter().zip(b.iter()) {
-                        if ax.len() != bx.len() {
-                            return false;
-                        }
-                        for (v, u) in ax.iter().zip(bx.iter()) {
-                            if f64::abs(v.0 - u.0) > tol {
-                                return false;
-                            }
-                        }
-                    }
-
-                    true
-                }
-                _ => false,
-            }
-        }
-    }
-
-    // a round trip read and write
-    #[test]
-    fn extxyz_rw_round_trip() {
-        let inp = r#"4
-key1=a key2=a/b key3=a@b key4="a@b" 
-Mg        -4.25650        3.79180       -2.54123
-C         -1.15405        2.86652       -1.26699
-C         -5.53758        3.70936        0.63504
-C         -7.28250        4.71303       -3.82016
-"#;
-        let rd = BufReader::new(Cursor::new(inp.as_bytes()));
-        let (natoms, info, arrs) = frame_read(rd, None).unwrap();
-
-        let mut buf = Vec::new();
-        {
-            let mut writer = BufWriter::new(&mut buf);
-            assert!(frame_write(&mut writer, natoms, &info, &arrs).is_ok());
-            writer.flush().unwrap();
-        }
-
-        let rd = BufReader::new(&buf[..]);
-        let (natoms, info, arrs) = frame_read(rd, None).unwrap();
-
-        assert_eq!(natoms, 4);
-        assert_eq!(format!("{}", info.get("key1").unwrap()), "a");
-        assert_eq!(format!("{}", info.get("key2").unwrap()), "a/b");
-        assert_eq!(format!("{}", info.get("key3").unwrap()), "a@b");
-        assert_eq!(format!("{}", info.get("key4").unwrap()), "a@b");
-        assert_eq!(format!("{}", arrs.get("species").unwrap()), "[Mg, C, C, C]");
-
-        let pos_got = arrs.get("pos").unwrap();
-        let pos_expect = Value::MatrixFloat(Vec::from([
-            Vec::from([FloatNum(-4.25650), FloatNum(3.79180), FloatNum(-2.54123)]),
-            Vec::from([FloatNum(-1.15405), FloatNum(2.86652), FloatNum(-1.26699)]),
-            Vec::from([FloatNum(-5.53758), FloatNum(3.70936), FloatNum(0.63504)]),
-            Vec::from([FloatNum(-7.28250), FloatNum(4.71303), FloatNum(-3.82016)]),
-        ]));
-        assert!(pos_got.eq_approx(&pos_expect));
-    }
 }

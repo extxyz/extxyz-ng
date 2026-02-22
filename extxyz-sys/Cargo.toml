@@ -2,7 +2,7 @@
 name = "extxyz-sys"
 description = "Unsafe bindings for libAtoms/extxyz"
 authors = ["Jusong Yu <jusong.yu@pm.me>"]
-repository = "https://github.com/ccmat-org/extxyz-rs"
+repository = "https://github.com/extxyz/extxyz-rs"
 build = "build.rs"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
@@ -17,5 +17,4 @@ libc = "0.2.177"
 [build-dependencies]
 cc = { version = "1.0", features = ["parallel"] }
 bindgen = "0.72.1"
-pcre2 = "0.2.11"
 
