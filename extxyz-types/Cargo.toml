@@ -1,6 +1,6 @@
 [package]
-name = "extxyz"
-description = "Safe API for dealing with xyz (and extxyz) format for material structure"
+name = "extxyz-types"
+description = "types for extxyz-sys and extxyz"
 authors = ["Jusong Yu <jusong.yu@pm.me>"]
 repository = "https://github.com/extxyz/extxyz-rs"
 readme = "README.md"
@@ -11,6 +11,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-extxyz-sys = { path = "../extxyz-sys" }
-extxyz-types = { path = "../extxyz-types" }
+# extxyz-sys = { path = "../extxyz-sys" }
 

@@ -13,6 +13,7 @@ edition = "2021"
 
 [dependencies]
 libc = "0.2.177"
+extxyz-types = { path = "../extxyz-types" }
 
 [build-dependencies]
 cc = { version = "1.0", features = ["parallel"] }

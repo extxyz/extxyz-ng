@@ -1,13 +1,9 @@
-use std::{
-    collections::HashMap,
-    io::{BufRead, Write},
-};
+use std::io::{BufRead, Write};
 
-use extxyz_sys::{read_frame as _read_frame, CextxyzError, DictHandler};
+use extxyz_sys::{read_frame as _read_frame, CextxyzError};
+use extxyz_types::{escape, Frame, Value};
 
 pub type Result<T> = std::result::Result<T, ExtxyzError>;
-
-pub use extxyz_sys::{escape, Boolean, FloatNum, Integer, Text, Value};
 
 #[derive(Debug)]
 pub enum ExtxyzError {
@@ -45,72 +41,6 @@ impl From<std::io::Error> for ExtxyzError {
 impl From<CextxyzError> for ExtxyzError {
     fn from(value: CextxyzError) -> Self {
         ExtxyzError::WrapperError(value)
-    }
-}
-
-/// A raw frame parsed from an `extxyz` file.
-///
-/// This struct represents the data for a single frame of an `extxyz` file,
-/// including the number of atoms, metadata, and per-atom arrays.  
-///
-/// You can iterate over the per-atom arrays directly:
-/// ```ignore
-/// for (name, value) in frame.arrs() {
-///     println!("{name}: {value:?}");
-/// }
-/// ```
-///
-/// Or convert the metadata info into a `HashMap` for easy lookup:
-/// ```ignore
-/// let info_map = frame.info();
-/// if let Some(temperature) = info_map.get("temperature") {
-///     println!("Temperature: {:?}", temperature);
-/// }
-/// ```
-pub struct Frame {
-    natoms: u32,
-    info: DictHandler,
-    arrs: DictHandler,
-}
-
-impl Frame {
-    /// Returns the number of atoms in the frame.
-    pub fn natoms(&self) -> u32 {
-        self.natoms
-    }
-
-    /// Returns the frame metadata (`info`) as a `HashMap` for easy lookup.
-    ///
-    /// Keys are `&str` slices pointing to the original `String`s inside
-    /// `DictHandler`, and values are references to `Value`.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let arrs_map = frame.arrs();
-    /// if let Some(pos) = arrs_map.get("pos") {
-    ///     println!("Positions: {:?}", pos);
-    /// }
-    /// ```
-    pub fn arrs(&self) -> HashMap<&str, &Value> {
-        let arrs = self.arrs.iter().map(|(k, v)| (k.as_str(), v));
-        HashMap::from_iter(arrs)
-    }
-
-    /// Returns the frame metadata (`info`) as a `HashMap` for easy lookup.
-    ///
-    /// Keys are `&str` slices pointing to the original `String`s inside
-    /// `DictHandler`, and values are references to `Value`.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let info_map = frame.info();
-    /// if let Some(temperature) = info_map.get("temperature") {
-    ///     println!("Temperature: {:?}", temperature);
-    /// }
-    /// ```
-    pub fn info(&self) -> HashMap<&str, &Value> {
-        let info = self.info.iter().map(|(k, v)| (k.as_str(), v));
-        HashMap::from_iter(info)
     }
 }
 
@@ -341,7 +271,11 @@ mod tests {
 
     use super::*;
 
-    impl Frame {
+    trait FrameNewExample {
+        fn new_example() -> Frame;
+    }
+
+    impl FrameNewExample for Frame {
         fn new_example() -> Frame {
             let inp = r#"4
 key1=a key2=a/b key3=a@b key4="a@b" 
