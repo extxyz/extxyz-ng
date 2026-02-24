@@ -13,4 +13,5 @@ edition = "2021"
 [dependencies]
 extxyz-sys = { path = "../extxyz-sys" }
 extxyz-types = { path = "../extxyz-types" }
+nom = "8.0.0"
 

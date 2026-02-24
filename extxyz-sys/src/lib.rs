@@ -261,7 +261,7 @@ impl FromPtr for DictHandler {
 /// XXX: the general wrapper takes *mut FILE as argument, and can then have
 /// - `extxyz_read_from_file` and
 /// - `extxyz_read_from_str`.
-pub fn read_frame<R: BufRead>(
+pub fn read_frame<R>(
     rd: &mut R,
     comment_override: Option<&str>,
 ) -> Result<(u32, DictHandler, DictHandler)> {
