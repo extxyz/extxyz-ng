@@ -1,3 +1,5 @@
+mod read;
+
 use std::io::{BufRead, Write};
 
 use extxyz_sys::{read_frame as _read_frame, CextxyzError};
@@ -48,7 +50,7 @@ pub fn read_frame<R>(rd: &mut R) -> Result<Frame>
 where
     R: BufRead,
 {
-    let (natoms, info, arrs) = _read_frame(rd, None).unwrap();
+    let (natoms, info, arrs) = _read_frame(rd, None)?;
     let frame = Frame { natoms, info, arrs };
     Ok(frame)
 }

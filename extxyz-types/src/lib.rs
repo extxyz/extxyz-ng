@@ -310,7 +310,18 @@ impl Frame {
         self.natoms
     }
 
-    /// Returns the frame metadata (`info`) as a `HashMap` for easy lookup.
+    /// override comment, if not exist, create the comment in the info field
+    pub fn set_comment(&mut self, comment: &str) {
+        let newv = Value::Str(Text::from(comment));
+
+        if let Some((_, value)) = self.info.0.iter_mut().find(|(k, _)| k == "comment") {
+            *value = newv;
+        } else {
+            self.info.0.push(("comment".to_string(), newv));
+        };
+    }
+
+    /// Returns the frame metadata (`arrs`) as a `HashMap` for easy lookup.
     ///
     /// Keys are `&str` slices pointing to the original `String`s inside
     /// `DictHandler`, and values are references to `Value`.
