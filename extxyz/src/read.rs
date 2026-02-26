@@ -4,7 +4,10 @@ use extxyz_types::{DictHandler, FloatNum, Frame, Text, Value};
 use nom::{
     self,
     branch::alt,
-    bytes::complete::{tag, take_while1},
+    bytes::{
+        complete::{tag, take_while, take_while1},
+        take_until1,
+    },
     character::{
         self,
         complete::{multispace0, space0},
@@ -13,8 +16,8 @@ use nom::{
     combinator::{all_consuming, map, map_res},
     multi::{many0, separated_list0, separated_list1},
     number,
-    sequence::{delimited, separated_pair, terminated},
-    IResult, Parser,
+    sequence::{delimited, preceded, separated_pair, terminated},
+    AsBytes, IResult, Parser,
 };
 use std::{
     collections::HashMap,
@@ -45,8 +48,13 @@ where
                 return Ok(frame);
             }
             Err(nom::Err::Incomplete(_needed)) => {
+                // FIXME: remove after demo
+                //
+                // rd.consume(buf.len());
+
                 let len = buf.len();
                 rd.consume(len);
+
                 continue;
             }
             Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string())),
@@ -80,9 +88,22 @@ fn parse_int(inp: &[u8]) -> IResult<&[u8], Value> {
 }
 
 fn parse_float(inp: &[u8]) -> IResult<&[u8], Value> {
-    number::complete::double
+    // number::complete::double will parse an integer into a float, this is what I don't want
+    // I parse twice here, using recognize_float_parts to get the fraction part and error out if it
+    // is a pure integer.
+    // More performant one is reimplement number::complete::double, but I dont bother do it.
+    let (inp_, (_, _, fraction, _)) = number::complete::recognize_float_parts(inp)?;
+    if fraction.is_empty() {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            inp_,
+            nom::error::ErrorKind::Float,
+        )));
+    }
+    let (inp, float) = number::complete::double
         .map(|i| Value::Float(i.into()))
-        .parse(inp)
+        .parse(inp)?;
+
+    Ok((inp, float))
 }
 
 fn parse_bool(inp: &[u8]) -> IResult<&[u8], Value> {
@@ -128,92 +149,148 @@ fn parse_quote_str(inp: &[u8]) -> IResult<&[u8], Value> {
 
 fn parse_value(inp: &[u8]) -> IResult<&[u8], Value> {
     // order conform with the spec, see README for spec definition.
-    let (inp, v) = delimited(
-        multispace0,
-        alt((
-            // float before int, to avoid 3.14 -> 3
-            parse_float,
-            parse_int,
-            // bool comes before str, to avoid boll true -> str "true"
-            parse_bool,
-            parse_bare_str,
-            parse_quote_str,
-        )),
-        multispace0,
+    alt((
+        // float before int, to avoid 3.14 -> 3
+        parse_float,
+        parse_int,
+        // bool comes before str, to avoid boll true -> str "true"
+        parse_bool,
+        parse_bare_str,
+        parse_quote_str,
+    ))
+    .parse(inp)
+}
+
+fn parse_2d_array(inp: &[u8]) -> IResult<&[u8], Value> {
+    let (inp_, vals) = delimited(
+        tag(b"[".as_ref()),
+        separated_list0(
+            tag(b",".as_ref()),
+            delimited(multispace0, parse_1d_array, multispace0),
+        ),
+        tag(b"]".as_ref()),
     )
     .parse(inp)?;
-    Ok((inp, v))
+
+    debug_assert!(!vals.is_empty());
+
+    match &vals[0] {
+        Value::VecInteger(_, nc) => {
+            let nc = *nc;
+            let nr = vals.len();
+            let vs = vals
+                .into_iter()
+                .map(|v| {
+                    let Value::VecInteger(i, x) = v else {
+                        unreachable!()
+                    };
+                    debug_assert_eq!(x, nc);
+                    i
+                })
+                .collect::<Vec<_>>();
+            Ok((inp_, Value::MatrixInteger(vs, (nr as u32, nc))))
+        }
+        Value::VecFloat(_, nc) => {
+            let nc = *nc;
+            let nr = vals.len();
+            let vs = vals
+                .into_iter()
+                .map(|v| {
+                    let Value::VecFloat(i, x) = v else {
+                        unreachable!()
+                    };
+                    debug_assert_eq!(x, nc);
+                    i
+                })
+                .collect::<Vec<_>>();
+            Ok((inp_, Value::MatrixFloat(vs, (nr as u32, nc))))
+        }
+        Value::VecBool(_, nc) => {
+            let nc = *nc;
+            let nr = vals.len();
+            let vs = vals
+                .into_iter()
+                .map(|v| {
+                    let Value::VecBool(i, x) = v else {
+                        unreachable!()
+                    };
+                    debug_assert_eq!(x, nc);
+                    i
+                })
+                .collect::<Vec<_>>();
+            Ok((inp_, Value::MatrixBool(vs, (nr as u32, nc))))
+        }
+        Value::VecText(texts, _) => todo!(),
+        _ => unreachable!(),
+    }
 }
 
 fn parse_1d_array(inp: &[u8]) -> IResult<&[u8], Value> {
     let (inp_, mut vals) = delimited(
         tag(b"[".as_ref()),
-        separated_list0(tag(b",".as_ref()), parse_value),
+        separated_list0(
+            tag(b",".as_ref()),
+            delimited(multispace0, parse_value, multispace0),
+        ),
         tag(b"]".as_ref()),
     )
     .parse(inp)?;
 
-    // promote
-    // TODO: this need to be a verbose error
-    if promote_values_1d(&mut vals).is_err() {
-        return Err(nom::Err::Failure(nom::error::Error::new(
-            inp,
-            nom::error::ErrorKind::Verify,
-        )));
-    }
+    debug_assert!(!vals.is_empty());
 
-    if vals.is_empty() {
-        // empty Vec, doesnt matter use which Value::Vec**
-        Ok((inp_, Value::VecBool(Vec::new(), 0)))
-    } else {
-        match &vals[0] {
-            Value::Integer(_) => {
-                let n = vals.len();
-                let vs = vals
-                    .into_iter()
-                    .map(|v| {
-                        let Value::Integer(i) = v else { unreachable!() };
-                        i
-                    })
-                    .collect::<Vec<_>>();
-                Ok((inp_, Value::VecInteger(vs, n as u32)))
-            }
-            Value::Float(_) => {
-                let n = vals.len();
-                let vs = vals
-                    .into_iter()
-                    .map(|v| {
-                        let Value::Float(i) = v else { unreachable!() };
-                        i
-                    })
-                    .collect::<Vec<_>>();
-                Ok((inp_, Value::VecFloat(vs, n as u32)))
-            }
-            Value::Bool(_) => {
-                let n = vals.len();
-                let vs = vals
-                    .into_iter()
-                    .map(|v| {
-                        let Value::Bool(i) = v else { unreachable!() };
-                        i
-                    })
-                    .collect::<Vec<_>>();
-                Ok((inp_, Value::VecBool(vs, n as u32)))
-            }
-            Value::Str(_) => {
-                let n = vals.len();
-                let vs = vals
-                    .into_iter()
-                    .map(|v| {
-                        let Value::Str(i) = v else { unreachable!() };
-                        i
-                    })
-                    .collect::<Vec<_>>();
-                Ok((inp_, Value::VecText(vs, n as u32)))
-            }
-            // safe unreachable: because all branches are ruled out in promote_values_1d call.
-            _ => unreachable!(),
+    // promote by single rule:
+    // only int -> float when mixed, all other mixture will fail.
+    promote_values_1d(&mut vals).map_err(|_| {
+        nom::Err::Failure(nom::error::Error::new(inp_, nom::error::ErrorKind::Verify))
+    })?;
+
+    match &vals[0] {
+        Value::Integer(_) => {
+            let n = vals.len();
+            let vs = vals
+                .into_iter()
+                .map(|v| {
+                    let Value::Integer(i) = v else { unreachable!() };
+                    i
+                })
+                .collect::<Vec<_>>();
+            Ok((inp_, Value::VecInteger(vs, n as u32)))
         }
+        Value::Float(_) => {
+            let n = vals.len();
+            let vs = vals
+                .into_iter()
+                .map(|v| {
+                    let Value::Float(i) = v else { unreachable!() };
+                    i
+                })
+                .collect::<Vec<_>>();
+            Ok((inp_, Value::VecFloat(vs, n as u32)))
+        }
+        Value::Bool(_) => {
+            let n = vals.len();
+            let vs = vals
+                .into_iter()
+                .map(|v| {
+                    let Value::Bool(i) = v else { unreachable!() };
+                    i
+                })
+                .collect::<Vec<_>>();
+            Ok((inp_, Value::VecBool(vs, n as u32)))
+        }
+        Value::Str(_) => {
+            let n = vals.len();
+            let vs = vals
+                .into_iter()
+                .map(|v| {
+                    let Value::Str(i) = v else { unreachable!() };
+                    i
+                })
+                .collect::<Vec<_>>();
+            Ok((inp_, Value::VecText(vs, n as u32)))
+        }
+        // safe unreachable: because all branches are ruled out in promote_values_1d call.
+        _ => unreachable!(),
     }
 }
 
@@ -399,12 +476,21 @@ mod tests {
 
     #[test]
     fn test_parse_1d_array() {
-        // TODO:
-        // let arr = b"[]";
-        // let (_, _) = parse_1d_array(arr).unwrap();
+        let arr = b"[0,1]";
+        let (_, val) = parse_1d_array(arr).unwrap();
+        let Value::VecInteger(vs, 2) = val else {
+            panic!("not a VecInteger")
+        };
+        assert_eq!(*vs[0], 0);
+        assert_eq!(*vs[1], 1);
+
+        let arr = b"[]";
+        assert!(parse_1d_array(arr).is_err());
 
         let valid_expects: &[&[u8]] = &[
             b"[0.1, 0.2, 0]",
+            // TODO: should support extra trailing ',' in the end of array
+            // b"[0.1, 0.2, 0,]",
             b"[ 0.1, 0.2, 0.0]",
             b"[0.1, \t0.2, 0.0]",
             b"[0.1, 0.2,      0]",
@@ -418,6 +504,28 @@ mod tests {
             assert_eq!(*vs[0], 0.1);
             assert_eq!(*vs[1], 0.2);
             assert_eq!(*vs[2], 0.0);
+        }
+    }
+
+    #[test]
+    fn test_parse_2d_array() {
+        let valid_expects: &[&[u8]] = &[
+            b"[[-0,1],[2,2],[10,-1]]",
+            b"[ [  -0, 1], \t[2,  2], [   10, -1]]",
+            b"[[-0, 1  ], [ 2  , 2], [10 , -1]]",
+            b"[[-0    \t , 1], [2, 2], [10, -1]]",
+        ];
+        for expect in valid_expects {
+            let (_, val) = parse_2d_array(expect).unwrap();
+            let Value::MatrixInteger(ms, (3, 2)) = val else {
+                panic!("not a MatrixInteger")
+            };
+            assert_eq!(*ms[0][0], 0);
+            assert_eq!(*ms[0][1], 1);
+            assert_eq!(*ms[1][0], 2);
+            assert_eq!(*ms[1][1], 2);
+            assert_eq!(*ms[2][0], 10);
+            assert_eq!(*ms[2][1], -1);
         }
     }
 }
