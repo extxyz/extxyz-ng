@@ -10,7 +10,7 @@ use nom::{
     },
     character::{
         self,
-        complete::{multispace0, space0},
+        complete::{alpha1, digit1, multispace0, space0},
         streaming,
     },
     combinator::{all_consuming, map, map_res},
@@ -150,6 +150,7 @@ fn parse_quote_str(inp: &[u8]) -> IResult<&[u8], Value> {
 fn parse_value(inp: &[u8]) -> IResult<&[u8], Value> {
     // order conform with the spec, see README for spec definition.
     alt((
+        parse_2d_array,
         // float before int, to avoid 3.14 -> 3
         parse_float,
         parse_int,
@@ -382,6 +383,63 @@ fn parse_info_line(inp: &[u8]) -> IResult<&[u8], HashMap<String, Value>> {
     Ok((inp, kv))
 }
 
+#[derive(Debug, Hash, PartialEq, Eq)]
+enum Ty {
+    // integer
+    I,
+    // Real
+    R,
+    // Logic
+    L,
+    // String
+    S,
+}
+
+type PropShape<'a> = HashMap<(&'a [u8], Ty), u8>;
+
+fn parse_properties<'a>(inp: &'a [u8]) -> IResult<&'a [u8], PropShape<'a>> {
+    // into triple elements chunk
+    let (inp_, segments) =
+        separated_list1(tag(b":".as_ref()), take_while1(|c: u8| c != b':')).parse(inp)?;
+
+    if segments.len() % 3 != 0 {
+        // TODO: verbose context error
+        return Err(nom::Err::Failure(nom::error::Error::new(
+            inp,
+            nom::error::ErrorKind::Verify,
+        )));
+    }
+
+    let mut mp = HashMap::new();
+    for chunk in segments.chunks(3) {
+        let id = chunk[0];
+        let ty = match chunk[1] {
+            b"I" => Ty::I,
+            b"R" => Ty::R,
+            b"L" => Ty::L,
+            b"S" => Ty::S,
+            _ => {
+                // TODO: verbose context error
+                return Err(nom::Err::Failure(nom::error::Error::new(
+                    inp,
+                    nom::error::ErrorKind::Verify,
+                )));
+            }
+        };
+        let nc = str::from_utf8(chunk[2])
+            .map_err(|_| {
+                nom::Err::Failure(nom::error::Error::new(inp, nom::error::ErrorKind::Verify))
+            })?
+            .parse::<u8>()
+            .map_err(|_| {
+                nom::Err::Failure(nom::error::Error::new(inp, nom::error::ErrorKind::Verify))
+            })?;
+
+        mp.insert((id, ty), nc);
+    }
+    Ok((inp_, mp))
+}
+
 fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
     let (input, _) = streaming::space0(input)?;
     let (input, natoms) = map_res(streaming::digit1, |digits: &[u8]| {
@@ -394,13 +452,27 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
         streaming::newline,
     )
     .parse(input)?;
-    let (_, info) = all_consuming(parse_info_line).parse(line)?;
+    let (_, mut info) = all_consuming(parse_info_line).parse(line)?;
 
     // TODO: check "properties"/"property"/"Property" and raise error with help message.
     // TODO: check "lattice" and raise error with help message.
 
-    let maybe_prop = info.get("Properties");
+    // if Properties not provided, the default shape is used
+    // The default (fallback) shape is: Properties=species:S:1:pos:R:3
+    let default_prop = Value::Str(Text::from("species:S:1:pos:R:3"));
+    let prop = info.entry("Properties".to_string()).or_insert(default_prop);
+    let Value::Str(text) = prop else {
+        unreachable!("properties must be parsed as a text")
+    };
+    let text = text.as_bytes();
+    let (_, prop) = parse_properties(text)?;
+
     let maybe_latt = info.get("Lattice");
+
+    // XXX: latt can be a matrix wrapped inside a pair of double quotes.
+    // if let Some(latt) = maybe_latt {
+    //
+    // }
 
     let mut atom_lines = Vec::new();
     for i in 0..natoms {
@@ -431,23 +503,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_info_line_default() {
-        let valid_expects: &[&[u8]] = &[
-            b"key1=aa key2=bb",
-            b"  key1=aa key2=bb",
-            b"  key1=aa key2=bb  ",
-            b"key1=aa  \t \t  key2=bb",
-            b" key1 =aa key2=bb",
-            b" key1= aa key2 =bb",
-            b" key1  =  aa key2  =  bb",
-            b"key1= \"aa\" key2  =  \"bb\"",
-        ];
-        for expect in valid_expects {
-            let (remain, v) = parse_info_line(expect).unwrap();
-            assert!(remain.is_empty());
-            assert_eq!(format!("{}", v.get("key1").unwrap()), "aa".to_string());
-            assert_eq!(format!("{}", v.get("key2").unwrap()), "bb".to_string());
-        }
+    fn test_parse_properties() {
+        let expect = b"species:S:1:pos:R:3";
+        let (_, prop) = parse_properties(expect).unwrap();
+        dbg!(prop);
     }
 
     #[test]
@@ -527,5 +586,38 @@ mod tests {
             assert_eq!(*ms[2][0], 10);
             assert_eq!(*ms[2][1], -1);
         }
+
+        // TODO: test array of other types
+    }
+
+    #[test]
+    fn test_parse_info_line_default() {
+        let valid_expects: &[&[u8]] = &[
+            b"key1=aa key2=bb",
+            b"  key1=aa key2=bb",
+            b"  key1=aa key2=bb  ",
+            b"key1=aa  \t \t  key2=bb",
+            b" key1 =aa key2=bb",
+            b" key1= aa key2 =bb",
+            b" key1  =  aa key2  =  bb",
+            b"key1= \"aa\" key2  =  \"bb\"",
+        ];
+        for expect in valid_expects {
+            let (remain, v) = parse_info_line(expect).unwrap();
+            assert!(remain.is_empty());
+            assert_eq!(format!("{}", v.get("key1").unwrap()), "aa".to_string());
+            assert_eq!(format!("{}", v.get("key2").unwrap()), "bb".to_string());
+        }
+    }
+
+    #[test]
+    fn test_parse_info_line_with_array() {
+        let line = b"key1=aa key2=bb Lattice=[[0,0,0],[10,4,4]]";
+        let (remain, v) = parse_info_line(line).unwrap();
+        dbg!(remain, v);
+
+        // FIXME: following all should supported.
+        // let line = b"key1=aa key2=bb Lattice=[[0, 0,0],[10,4,4]]";
+        // let line = b"key1=aa key2=bb Lattice=[[0.0,0,0],[10,4,4]]";
     }
 }

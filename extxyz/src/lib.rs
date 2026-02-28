@@ -170,6 +170,7 @@ where
 
     let mut s = String::new();
     let mut iter = frame.arrs.0.iter().peekable();
+    // loop over columns, so it cant be single value but must be vec, or matrix
     while let Some((k, v)) = iter.next() {
         s.push_str(k);
         s.push(':');
@@ -197,9 +198,10 @@ where
     write!(w, "{}", escape(&s))?;
     writeln!(w)?;
 
-    // arrays
+    // out loop, over atoms (rows)
     for i in 0..natoms {
         let mut iter = frame.arrs.0.iter().peekable();
+        // loop over by columns (property in properties list)
         while let Some((_, v)) = iter.next() {
             let i = i as usize;
 
@@ -287,8 +289,7 @@ C         -5.53758        3.70936        0.63504
 C         -7.28250        4.71303       -3.82016
 "#;
             let mut rd = Cursor::new(inp.as_bytes());
-            let frame = read_frame(&mut rd).unwrap();
-            frame
+            read_frame(&mut rd).unwrap()
         }
     }
 
