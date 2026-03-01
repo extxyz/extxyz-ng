@@ -7,7 +7,7 @@ use nom::{
     bytes::complete::{tag, take_while1},
     character::{
         self,
-        complete::{multispace0, space0},
+        complete::{multispace0, space0, space1},
         streaming,
     },
     combinator::{all_consuming, map, map_res, recognize, verify},
@@ -80,10 +80,6 @@ fn parse_int(inp: &[u8]) -> IResult<&[u8], Value> {
         .parse(inp)
 }
 
-fn recognize_int(inp: &[u8]) -> IResult<&[u8], &[u8]> {
-    recognize(parse_int).parse(inp)
-}
-
 fn parse_float(inp: &[u8]) -> IResult<&[u8], Value> {
     // number::complete::double will parse an integer into a float, this is what I don't want
     // I parse twice here, using recognize_float_parts to get the fraction part and error out if it
@@ -103,10 +99,6 @@ fn parse_float(inp: &[u8]) -> IResult<&[u8], Value> {
     Ok((inp, float))
 }
 
-fn recognize_float(inp: &[u8]) -> IResult<&[u8], &[u8]> {
-    recognize(parse_float).parse(inp)
-}
-
 fn parse_bool(inp: &[u8]) -> IResult<&[u8], Value> {
     // T or F or [tT]rue or [fF]alse or TRUE or FALSE
     alt((
@@ -120,10 +112,6 @@ fn parse_bool(inp: &[u8]) -> IResult<&[u8], Value> {
         tag("F").map(|_| Value::Bool(false.into())),
     ))
     .parse(inp)
-}
-
-fn recognize_bool(inp: &[u8]) -> IResult<&[u8], &[u8]> {
-    recognize(parse_bool).parse(inp)
 }
 
 fn parse_bare_str(inp: &[u8]) -> IResult<&[u8], Value> {
@@ -140,14 +128,10 @@ fn parse_bare_str(inp: &[u8]) -> IResult<&[u8], Value> {
     Ok((linp, Value::Str(Text::from(s))))
 }
 
-fn recognize_bare_str(inp: &[u8]) -> IResult<&[u8], &[u8]> {
-    recognize(parse_bare_str).parse(inp)
-}
-
 fn parse_quote_str(inp: &[u8]) -> IResult<&[u8], Value> {
     let parse_inner = map(
         many0(alt((
-            take_while1(|b| b != b'\\' && b != b'"'), // raw bytes
+            take_while1(|b| b != b'\\' && b != b'"'),
             map(tag(r#"\""#), |_| b"\"".as_ref()),
             map(tag(r#"\\"#), |_| b"\\".as_ref()),
             map(tag(r#"\n"#), |_| b"\n".as_ref()),
@@ -162,8 +146,18 @@ fn parse_quote_str(inp: &[u8]) -> IResult<&[u8], Value> {
     delimited(tag(b"\"".as_ref()), parse_inner, tag(b"\"".as_ref())).parse(inp)
 }
 
-fn recognize_quote_str(inp: &[u8]) -> IResult<&[u8], &[u8]> {
-    recognize(parse_quote_str).parse(inp)
+fn parse_properties_str(inp: &[u8]) -> IResult<&[u8], Value> {
+    let (remain, inp) =
+        take_while1(|c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b':').parse(inp)?;
+    // let (linp, s) = recognize(separated_list1(
+    //     tag(b":".as_ref()),
+    //     take_while1(|c: u8| c != b':'),
+    // ))
+    // .parse(inp)?;
+    let s = String::from_utf8(inp.to_vec()).map_err(|_| {
+        nom::Err::Failure(nom::error::Error::new(inp, nom::error::ErrorKind::Verify))
+    })?;
+    Ok((remain, Value::Str(Text::from(s))))
 }
 
 fn parse_kv_right(inp: &[u8]) -> IResult<&[u8], Value> {
@@ -175,6 +169,7 @@ fn parse_kv_right(inp: &[u8]) -> IResult<&[u8], Value> {
         parse_int,
         // bool comes before str, to avoid boll true -> str "true"
         parse_bool,
+        parse_properties_str,
         parse_bare_str,
         parse_quote_str,
     ))
@@ -403,26 +398,13 @@ fn promote_values_1d(vals: &mut [Value]) -> Result<(), InnerParseError> {
     }
 }
 
-fn parse_info_line(inp: &[u8]) -> IResult<&[u8], HashMap<String, Value>> {
-    let (inp, vec_kv) = delimited(
+fn parse_info_line(inp: &[u8]) -> IResult<&[u8], Vec<(&[u8], &[u8])>> {
+    let (inp, kv) = delimited(
         multispace0,
         all_consuming(separated_list1(space0, key_value)),
         multispace0,
     )
     .parse(inp)?;
-    let mut kv = HashMap::new();
-    for (k, v) in vec_kv {
-        let key = String::from_utf8(k.to_vec()).expect("invalid utf8");
-        let (_, val) = parse_kv_right(v)?;
-
-        let old_val = kv.insert(key, val);
-        if old_val.is_some() {
-            return Err(nom::Err::Failure(nom::error::Error::new(
-                k,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    }
     Ok((inp, kv))
 }
 
@@ -438,7 +420,7 @@ enum Ty {
     S,
 }
 
-type PropShape<'a> = HashMap<(&'a [u8], Ty), u8>;
+type PropShape<'a> = Vec<(&'a [u8], Ty, u8)>;
 
 fn parse_properties<'a>(inp: &'a [u8]) -> IResult<&'a [u8], PropShape<'a>> {
     // into triple elements chunk
@@ -453,7 +435,7 @@ fn parse_properties<'a>(inp: &'a [u8]) -> IResult<&'a [u8], PropShape<'a>> {
         )));
     }
 
-    let mut mp = HashMap::new();
+    let mut mp = Vec::new();
     for chunk in segments.chunks(3) {
         let id = chunk[0];
         let ty = match chunk[1] {
@@ -478,61 +460,194 @@ fn parse_properties<'a>(inp: &'a [u8]) -> IResult<&'a [u8], PropShape<'a>> {
                 nom::Err::Failure(nom::error::Error::new(inp, nom::error::ErrorKind::Verify))
             })?;
 
-        mp.insert((id, ty), nc);
+        mp.push((id, ty, nc));
     }
     Ok((inp_, mp))
 }
 
 fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
-    let (input, _) = streaming::space0(input)?;
+    let (input, _) = streaming::multispace0(input)?;
     let (input, natoms) = map_res(streaming::digit1, |digits: &[u8]| {
         let s = std::str::from_utf8(digits).expect("digit1 expect ASCII");
-        s.parse::<u32>()
+        s.parse::<usize>()
     })
     .parse(input)?;
+    let (input, _) = streaming::multispace0(input)?;
+    // let (input, _) = streaming::newline(input)?;
+
     let (mut input, line) = terminated(
         nom::bytes::streaming::take_until(&b"\n"[..]),
         streaming::newline,
     )
     .parse(input)?;
-    let (_, mut info) = all_consuming(parse_info_line).parse(line)?;
+
+    let (_, info_kv) = all_consuming(parse_info_line).parse(line)?;
+
+    let mut kv = HashMap::new();
+
+    for (k, v) in info_kv {
+        let old_val = kv.insert(k, v);
+        // fatal when key duplicate in the info line
+        // TODO: verbose context error
+        if old_val.is_some() {
+            return Err(nom::Err::Failure(nom::error::Error::new(
+                k,
+                nom::error::ErrorKind::Verify,
+            )));
+        }
+    }
 
     // TODO: check "properties"/"property"/"Property" and raise error with help message.
     // TODO: check "lattice" and raise error with help message.
-
-    // if Properties not provided, the default shape is used
-    // The default (fallback) shape is: Properties=species:S:1:pos:R:3
-    let default_prop = Value::Str(Text::from("species:S:1:pos:R:3"));
-    let prop = info.entry("Properties".to_string()).or_insert(default_prop);
-    let Value::Str(text) = prop else {
-        unreachable!("properties must be parsed as a text")
-    };
-    let text = text.as_bytes();
-    // let (_, prop) = parse_properties(text)?;
     //
-    // let maybe_latt = info.get("Lattice");
+    // The default (fallback) shape is: Properties=species:S:1:pos:R:3
+    let prop_shape = kv
+        .remove("Properties".as_bytes())
+        .unwrap_or(b"species:S:1:pos:R:3");
+    let (_, prop_shape) = parse_properties(prop_shape)?;
+
+    let maybe_latt = kv.remove("Lattice".as_bytes());
+
+    // latt and prop_shape stored separatly from pure_kv
+    let mut pure_kv = HashMap::with_capacity(kv.len());
+    for (k, v) in kv {
+        let (_, v) = parse_kv_right(v)?;
+        pure_kv.insert(k, v);
+    }
 
     // XXX: latt can be a matrix wrapped inside a pair of double quotes.
     // if let Some(latt) = maybe_latt {
     //
     // }
 
-    let mut atom_lines = Vec::new();
+    // TODO: validate natoms and number of rows of the arr
+
+    let mut mhs: HashMap<&[u8], Vec<Value>> = HashMap::with_capacity(prop_shape.len());
     for i in 0..natoms {
         let (rest, line) = terminated(
             nom::bytes::streaming::take_until(&b"\n"[..]),
             streaming::newline,
         )
         .parse(input)?;
-        atom_lines.push(line);
+        let (_, mut vs_raw) = delimited(
+            multispace0,
+            separated_list1(
+                space1,
+                alt((parse_bare_str, parse_float, parse_int, parse_bool)),
+            ),
+            multispace0,
+        )
+        .parse(line)?;
+
+        let mut loc: u8 = 0;
+        for (name, ty, n) in &prop_shape {
+            if *n == 0 {
+                // TODO: verbose context error
+                return Err(nom::Err::Failure(nom::error::Error::new(
+                    rest,
+                    nom::error::ErrorKind::Verify,
+                )));
+            }
+            if *n == 1 {
+                let vv = std::mem::take(&mut vs_raw[loc as usize]);
+                mhs.entry(name).or_default().push(vv);
+                loc += *n;
+            } else {
+                let mut vv: Vec<Value> = Vec::with_capacity(*n as usize);
+                vv.resize_with(*n as usize, Default::default);
+                for i in 0..(*n) {
+                    vv[i as usize] = std::mem::take(&mut vs_raw[(i + loc) as usize]);
+                }
+                let vxs = match ty {
+                    Ty::I => {
+                        let vv = vv
+                            .into_iter()
+                            .map(|vv| {
+                                let Value::Integer(inner) = vv else {
+                                    // actual value not consistent with ty in prop_shape
+                                    return Err(nom::Err::Failure(nom::error::Error::new(
+                                        rest,
+                                        nom::error::ErrorKind::Verify,
+                                    )));
+                                };
+                                Ok(inner)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        let len = vv.len();
+                        Value::VecInteger(vv, len as u32)
+                    }
+                    Ty::R => {
+                        let vv = vv
+                            .into_iter()
+                            .map(|vv| {
+                                let inner = match vv {
+                                    Value::Integer(int_inner) => {
+                                        FloatNum::from(f64::from(*int_inner))
+                                    }
+                                    Value::Float(inner) => inner,
+                                    _ => {
+                                        // actual value not consistent with ty in prop_shape
+                                        return Err(nom::Err::Failure(nom::error::Error::new(
+                                            rest,
+                                            nom::error::ErrorKind::Verify,
+                                        )));
+                                    }
+                                };
+                                Ok(inner)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        let len = vv.len();
+                        Value::VecFloat(vv, len as u32)
+                    }
+                    Ty::L => {
+                        let vv = vv
+                            .into_iter()
+                            .map(|vv| {
+                                let Value::Bool(inner) = vv else {
+                                    // actual value not consistent with ty in prop_shape
+                                    return Err(nom::Err::Failure(nom::error::Error::new(
+                                        rest,
+                                        nom::error::ErrorKind::Verify,
+                                    )));
+                                };
+                                Ok(inner)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        let len = vv.len();
+                        Value::VecBool(vv, len as u32)
+                    }
+                    Ty::S => {
+                        let vv = vv
+                            .into_iter()
+                            .map(|vv| {
+                                let Value::Str(inner) = vv else {
+                                    // actual value not consistent with ty in prop_shape
+                                    return Err(nom::Err::Failure(nom::error::Error::new(
+                                        rest,
+                                        nom::error::ErrorKind::Verify,
+                                    )));
+                                };
+                                Ok(inner)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        let len = vv.len();
+                        Value::VecText(vv, len as u32)
+                    }
+                };
+                mhs.entry(name).or_default().push(vxs);
+                loc += *n;
+            }
+        }
+
         // bring the rest out as remaining input
         input = rest;
     }
+    debug_assert!(input.is_empty());
 
     Ok((
         input,
         Frame {
-            natoms,
+            natoms: natoms as u32,
             info: DictHandler(Vec::new()),
             arrs: DictHandler(Vec::new()),
         },
@@ -545,12 +660,15 @@ mod tests {
 
     use super::*;
 
-    // #[test]
-    // fn test_parse_properties() {
-    //     let expect = b"species:S:1:pos:R:3";
-    //     let (_, prop) = parse_properties(expect).unwrap();
-    //     dbg!(prop);
-    // }
+    #[test]
+    fn test_parse_properties() {
+        let expect = b"species:S:1:pos:R:3";
+        let (_, prop) = parse_properties(expect).unwrap();
+        // assert_eq!(*prop.get(&("species".as_bytes(), Ty::S)).unwrap(), 1);
+        // assert_eq!(*prop.get(&("pos".as_bytes(), Ty::R)).unwrap(), 3);
+
+        // TODO: if size is 0, raise parsing error
+    }
 
     #[test]
     fn test_promote_values_1d() {
@@ -640,37 +758,83 @@ mod tests {
             b" key1 =aa key2=bb",
             b" key1= aa key2 =bb",
             b" key1  =  aa key2  =  bb",
-            b"key1= \"aa\" key2  =  \"bb\"",
+            // TODO: move to final value test
+            // b"key1= \"aa\" key2  =  \"bb\"",
         ];
         for expect in valid_expects {
             let (remain, v) = parse_info_line(expect).unwrap();
             assert!(remain.is_empty());
-            assert_eq!(format!("{}", v.get("key1").unwrap()), "aa".to_string());
-            assert_eq!(format!("{}", v.get("key2").unwrap()), "bb".to_string());
+            assert_eq!(
+                format!(
+                    "{}={}",
+                    str::from_utf8(v[0].0).unwrap(),
+                    str::from_utf8(v[0].1).unwrap()
+                ),
+                "key1=aa".to_string()
+            );
+            assert_eq!(
+                format!(
+                    "{}={}",
+                    str::from_utf8(v[1].0).unwrap(),
+                    str::from_utf8(v[1].1).unwrap()
+                ),
+                "key2=bb".to_string()
+            );
         }
     }
 
     #[test]
-    fn test_parse_info_line_with_array() {
-        let valid_expects: &[&[u8]] = &[
-            b"key1=aa key2=bb Lattice=[[0,0,0],[10,4,4]]",
-            b"key1=aa key2=bb Lattice=[[ 0,0 ,0],[10, 4,4]]",
-            b"key1=aa key2=bb Lattice=[[0,0,0], [10,4,4]]",
-        ];
-        for expect in valid_expects {
-            let (remain, v) = parse_info_line(expect).unwrap();
-            assert!(remain.is_empty());
-            assert_eq!(format!("{}", v.get("key1").unwrap()), "aa".to_string());
-            assert_eq!(format!("{}", v.get("key2").unwrap()), "bb".to_string());
-            let Value::MatrixInteger(ms, (2, 3)) = v.get("Lattice").unwrap() else {
-                panic!("not a 2x3 MatrixInteger")
-            };
-            assert_eq!(*ms[0][0], 0);
-            assert_eq!(*ms[0][1], 0);
-            assert_eq!(*ms[0][2], 0);
-            assert_eq!(*ms[1][0], 10);
-            assert_eq!(*ms[1][1], 4);
-            assert_eq!(*ms[1][2], 4);
-        }
+    fn test_parse_frame_default() {
+        let inp = &br#"2
+Properties=species:S:1:pos:R:3 key1=aa
+Mn 0.0 0.5 0.5
+C 0.0 0.5 0.3
+"#[..];
+        let (_, frame) = parse_frame(inp)
+            .map_err(|err| {
+                err.map_input(|inp| {
+                    // println!("{}", str::from_utf8(inp).unwrap())
+                    str::from_utf8(inp).unwrap()
+                })
+            })
+            .unwrap();
     }
+
+    // #[test]
+    // fn test_parse_info_line_with_array() {
+    //     let valid_expects: &[&[u8]] = &[
+    //         b"key1=aa key2=bb Lattice=[[0,0,0],[10,4,4]]",
+    //         b"key1=aa key2=bb Lattice=[[ 0,0 ,0],[10, 4,4]]",
+    //         b"key1=aa key2=bb Lattice=[[0,0,0], [10,4,4]]",
+    //     ];
+    //     for expect in valid_expects {
+    //         let (remain, v) = parse_info_line(expect).unwrap();
+    //         assert!(remain.is_empty());
+    //         assert_eq!(
+    //             format!(
+    //                 "{}={}",
+    //                 str::from_utf8(v[0].0).unwrap(),
+    //                 str::from_utf8(v[0].1).unwrap()
+    //             ),
+    //             "key1=aa".to_string()
+    //         );
+    //         assert_eq!(
+    //             format!(
+    //                 "{}={}",
+    //                 str::from_utf8(v[1].0).unwrap(),
+    //                 str::from_utf8(v[1].1).unwrap()
+    //             ),
+    //             "key2=bb".to_string()
+    //         );
+    //         let Value::MatrixInteger(ms, (2, 3)) = v.get("Lattice").unwrap() else {
+    //             panic!("not a 2x3 MatrixInteger")
+    //         };
+    //         assert_eq!(*ms[0][0], 0);
+    //         assert_eq!(*ms[0][1], 0);
+    //         assert_eq!(*ms[0][2], 0);
+    //         assert_eq!(*ms[1][0], 10);
+    //         assert_eq!(*ms[1][1], 4);
+    //         assert_eq!(*ms[1][2], 4);
+    //     }
+    // }
 }

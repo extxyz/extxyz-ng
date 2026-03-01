@@ -102,7 +102,7 @@ pub struct Boolean(bool);
 /// let t = Text::from("hello");
 /// takes_str(&t);
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Text(String);
 
 impl Deref for Integer {
@@ -190,7 +190,7 @@ impl std::fmt::Display for Text {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub enum Value {
     Integer(Integer),
     Float(FloatNum),
@@ -204,6 +204,7 @@ pub enum Value {
     MatrixFloat(Vec<Vec<FloatNum>>, (u32, u32)),
     MatrixBool(Vec<Vec<Boolean>>, (u32, u32)),
     MatrixText(Vec<Vec<Text>>, (u32, u32)),
+    #[default]
     Unsupported,
 }
 
@@ -297,6 +298,7 @@ impl<'a> IntoIterator for &'a DictHandler {
 ///     println!("Temperature: {:?}", temperature);
 /// }
 /// ```
+#[derive(Debug)]
 pub struct Frame {
     pub natoms: u32,
     pub info: DictHandler,
