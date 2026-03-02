@@ -102,7 +102,7 @@ pub struct Boolean(bool);
 /// let t = Text::from("hello");
 /// takes_str(&t);
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Text(String);
 
 impl Deref for Integer {
@@ -190,7 +190,7 @@ impl std::fmt::Display for Text {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub enum Value {
     Integer(Integer),
     Float(FloatNum),
@@ -204,6 +204,7 @@ pub enum Value {
     MatrixFloat(Vec<Vec<FloatNum>>, (u32, u32)),
     MatrixBool(Vec<Vec<Boolean>>, (u32, u32)),
     MatrixText(Vec<Vec<Text>>, (u32, u32)),
+    #[default]
     Unsupported,
 }
 
@@ -297,6 +298,7 @@ impl<'a> IntoIterator for &'a DictHandler {
 ///     println!("Temperature: {:?}", temperature);
 /// }
 /// ```
+#[derive(Debug)]
 pub struct Frame {
     pub natoms: u32,
     pub info: DictHandler,
@@ -310,7 +312,18 @@ impl Frame {
         self.natoms
     }
 
-    /// Returns the frame metadata (`info`) as a `HashMap` for easy lookup.
+    /// override comment, if not exist, create the comment in the info field
+    pub fn set_comment(&mut self, comment: &str) {
+        let newv = Value::Str(Text::from(comment));
+
+        if let Some((_, value)) = self.info.0.iter_mut().find(|(k, _)| k == "comment") {
+            *value = newv;
+        } else {
+            self.info.0.push(("comment".to_string(), newv));
+        };
+    }
+
+    /// Returns the frame metadata (`arrs`) as a `HashMap` for easy lookup.
     ///
     /// Keys are `&str` slices pointing to the original `String`s inside
     /// `DictHandler`, and values are references to `Value`.
