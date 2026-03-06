@@ -147,8 +147,10 @@ fn parse_quote_str(inp: &[u8]) -> IResult<&[u8], Value> {
 }
 
 fn parse_bare_properties_str(inp: &[u8]) -> IResult<&[u8], Value> {
-    let (remain, inp) =
-        take_while1(|c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b':').parse(inp)?;
+    let (remain, inp) = take_while1(|c: u8| {
+        c.is_ascii_alphanumeric() || c == b'_' || c == b':' || c == b'@' || c == b'/'
+    })
+    .parse(inp)?;
     let s = String::from_utf8(inp.to_vec()).map_err(|_| {
         nom::Err::Failure(nom::error::Error::new(inp, nom::error::ErrorKind::Verify))
     })?;
