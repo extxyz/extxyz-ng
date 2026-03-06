@@ -3,37 +3,38 @@ use std::io::Write;
 
 use extxyz_types::{escape, Frame, Value};
 
-fn write_lattice<T, W>(w: &mut W, m: &[Vec<T>]) -> Result<()>
-where
-    T: Default + std::fmt::Display + Copy,
-    W: Write,
-{
-    if m.len() != 3 {
-        return Err(ExtxyzError::InvalidValue("expect 3x3 matrix"));
-    }
-
-    // transpose lattice matrix which has vectors in column-wise.
-    let mut m3 = [[T::default(); 3]; 3];
-
-    for i in 0..3 {
-        if m[i].len() != 3 {
-            return Err(ExtxyzError::InvalidValue("expect 3x3 matrix"));
-        }
-        for j in 0..3 {
-            m3[i][j] = m[j][i];
-        }
-    }
-
-    write!(w, "\"")?;
-
-    m3.as_flattened()
-        .iter()
-        .try_for_each(|s| write!(w, "{s}"))?;
-
-    write!(w, "\"")?;
-
-    Ok(())
-}
+// // deprecated, this is the old style in representing lattice as flatten vecs
+// fn write_lattice<T, W>(w: &mut W, m: &[Vec<T>]) -> Result<()>
+// where
+//     T: Default + std::fmt::Display + Copy,
+//     W: Write,
+// {
+//     if m.len() != 3 {
+//         return Err(ExtxyzError::InvalidValue("expect 3x3 matrix"));
+//     }
+//
+//     // transpose lattice matrix which has vectors in column-wise.
+//     let mut m3 = [[T::default(); 3]; 3];
+//
+//     for i in 0..3 {
+//         if m[i].len() != 3 {
+//             return Err(ExtxyzError::InvalidValue("expect 3x3 matrix"));
+//         }
+//         for j in 0..3 {
+//             m3[i][j] = m[j][i];
+//         }
+//     }
+//
+//     write!(w, "\"")?;
+//
+//     m3.as_flattened()
+//         .iter()
+//         .try_for_each(|s| write!(w, "{s}"))?;
+//
+//     write!(w, "\"")?;
+//
+//     Ok(())
+// }
 
 /// instead of calling c api, it is easier to reimplement it, because I don't need to do parsing.
 /// since it is rust, performance wise also compatible with c implementation and safe.
@@ -67,18 +68,12 @@ where
         // in extxyz c implementation, lattice treated different write in column-wise and use
         // single space as spliter
         if k.as_str() == "Lattice" {
-            // XXX: check in the parser, whether is the Lattice can have item type as Integer of Bool?
-            // From perspective of a crystal parser, the spec should be more strict that it is
-            // always parsed as Float.
             match v {
-                Value::MatrixInteger(m, _) => {
-                    write_lattice(w, m)?;
+                Value::MatrixInteger(_, _) => {
+                    write!(w, "{v}")?;
                 }
-                Value::MatrixFloat(m, _) => {
-                    write_lattice(w, m)?;
-                }
-                Value::MatrixBool(m, _) => {
-                    write_lattice(w, m)?;
+                Value::MatrixFloat(_, _) => {
+                    write!(w, "{v}")?;
                 }
                 _ => {
                     // this is unreachable if the inner dict is not create manually
