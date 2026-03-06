@@ -3,7 +3,8 @@ mod write;
 
 use std::io::BufRead;
 
-use extxyz_types::Frame;
+// re-export `Frame` from extxyz_types
+pub use extxyz_types::{Frame, Value};
 
 use crate::read::_read_frame_native;
 pub use crate::write::write_frame;
