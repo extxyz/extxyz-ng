@@ -17,7 +17,11 @@ use std::{
 use extxyz_types::{Boolean, DictHandler, FloatNum, Integer, Text, Value};
 use libc::fmemopen;
 
-include!("bindings.rs");
+#[allow(dead_code)]
+#[allow(clippy::all)]
+mod bindings {
+    include!("bindings.rs");
+}
 
 pub type Result<T> = std::result::Result<T, CextxyzError>;
 
@@ -51,7 +55,7 @@ impl From<std::io::Error> for CextxyzError {
     }
 }
 
-unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)> {
+unsafe fn c_to_rust_dict(mut ptr: *mut bindings::dict_entry_struct) -> Vec<(String, Value)> {
     let mut map = Vec::new();
 
     while !ptr.is_null() {
@@ -77,7 +81,7 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
         };
 
         let value = match entry.data_t {
-            data_type_data_i => {
+            bindings::data_type_data_i => {
                 let slice =
                     unsafe { slice::from_raw_parts(entry.data as *const i32, nrows * ncols) };
 
@@ -108,7 +112,7 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
                 }
             }
 
-            data_type_data_f => {
+            bindings::data_type_data_f => {
                 let slice =
                     unsafe { slice::from_raw_parts(entry.data as *const f64, nrows * ncols) };
 
@@ -139,7 +143,7 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
                 }
             }
 
-            data_type_data_b => {
+            bindings::data_type_data_b => {
                 let slice =
                     unsafe { slice::from_raw_parts(entry.data as *const i32, nrows * ncols) };
 
@@ -170,7 +174,7 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
                 }
             }
 
-            data_type_data_s => {
+            bindings::data_type_data_s => {
                 let slice =
                     unsafe { slice::from_raw_parts(entry.data as *const *const i8, nrows * ncols) };
 
@@ -221,7 +225,7 @@ unsafe fn c_to_rust_dict(mut ptr: *mut dict_entry_struct) -> Vec<(String, Value)
 }
 
 trait FromPtr {
-    unsafe fn from_ptr(ptr: *mut dict_entry_struct) -> Self;
+    unsafe fn from_ptr(ptr: *mut bindings::dict_entry_struct) -> Self;
 }
 
 impl FromPtr for DictHandler {
@@ -231,7 +235,7 @@ impl FromPtr for DictHandler {
     ///
     /// public function might dereference a raw pointer but is not marked `unsafe`.
     /// Make sure the raw ptr is valid.
-    unsafe fn from_ptr(ptr: *mut dict_entry_struct) -> Self {
+    unsafe fn from_ptr(ptr: *mut bindings::dict_entry_struct) -> Self {
         let data = c_to_rust_dict(ptr);
         DictHandler(data)
     }
@@ -261,7 +265,7 @@ pub fn read_frame<R: BufRead>(
     rd: &mut R,
     comment_override: Option<&str>,
 ) -> Result<(u32, DictHandler, DictHandler)> {
-    let kv_grammar = unsafe { compile_extxyz_kv_grammar() };
+    let kv_grammar = unsafe { bindings::compile_extxyz_kv_grammar() };
 
     // Prepare output variables
     let mut nat: i32 = 0;
@@ -277,8 +281,8 @@ pub fn read_frame<R: BufRead>(
     // allocate pointer for info ptr and arrays ptr
     // NOTE: the info and arrays are ptr and they are allocated within the `extxyz_read_ll`
     // unsafe call through `tree_to_dict`
-    let mut info: *mut DictEntry = std::ptr::null_mut();
-    let mut arrays: *mut DictEntry = std::ptr::null_mut();
+    let mut info: *mut bindings::DictEntry = std::ptr::null_mut();
+    let mut arrays: *mut bindings::DictEntry = std::ptr::null_mut();
 
     let mut error_message = vec![0u8; 1024];
     let error_ptr = error_message.as_mut_ptr().cast::<i8>();
@@ -301,7 +305,7 @@ pub fn read_frame<R: BufRead>(
             return Err(io::Error::other("Failed to open file").into());
         }
 
-        extxyz_read_ll(
+        bindings::extxyz_read_ll(
             kv_grammar,
             fp,
             &raw mut nat,
@@ -329,8 +333,8 @@ pub fn read_frame<R: BufRead>(
         unsafe { (DictHandler::from_ptr(info), DictHandler::from_ptr(arrays)) };
 
     unsafe {
-        free_dict(info);
-        free_dict(arrays);
+        bindings::free_dict(info);
+        bindings::free_dict(arrays);
     }
 
     Ok((nat as u32, info_val, arrays_val))
