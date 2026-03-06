@@ -1,6 +1,83 @@
-# extxyz-rs
+# extxyz-ng
 
-rust interface for libAtoms/extxyz
+Extended XYZ specification and parsers.
+
+Implemented in rust, with python binding provided 
+
+## Why/when you should/shouldnt use old c implementation aka `libAtoms/extxyz`
+
+You should use [`libAtoms/extxyz`](https://github.com/libAtoms/extxyz) if you want
+
+- use julia binding (but we can add it to extxyz-ng, no time work on it at the moment).
+- use fortran binding.
+
+You should use `extxyz/extxyz-ng` if you want
+
+- robust parsing that won't end up at segmentfault when your input is slightly misalign (e.g. leading spaces)
+- nice error showing you where exactly the input is not able to be parsed.
+- nice formatting write to the output, it takes care of accurate alignment for every format.
+- read from flexible input that compatible for legacy libAtoms/extxyz but no segfalut for what expected to be readable.
+- latest python version support.
+- use it in WebAssembly.
+- use it as a rust dependency.
+- streaming on read/write without blowup you RAM for trajactories of large structure.
+
+## Writer formatting
+
+- keys and values in the info line keeps its original format
+
+## Round-trip tests
+
+To fully backward compatible with legacy `libAtoms/extxyz` which used in the community for long time.
+I run following round-trip tests to ensure the behavior align with old specification.
+
+- `.xyz` --`extxyz-ng`/read --> inner --`extxyz-ng`/write--> `.xyz`-01 --`cextxyz`/read--> inner --> `.xyz`-02
+- test xyz-01 exatly the same as xyz-02 in content.
+
+## TODO: some ambiguse inputs that need to recheck for legacy and new parser
+- what if Properties has same keys but different shape? will undefiened override happens?
+- arr rows has spaces padding cause segfault
+
+## Specification
+
+### Types to be parsed in the info line (line 2nd)
+
+- Float
+- Int
+- Boolean
+- bare string
+- string
+
+#### Type promotion
+
+In array, Int will promote to Float. No other promote rules.
+This is different from libAtoms/extxyz because blindly promote will cause ambiguity.
+For example, if bool can be promote to string, it is a "True" on "T" or "true"?
+If user put an Int of Float, them meant to say it is a number. If there are string parsed from the same array, it is usually indicate an invalid element in the input file.
+
+### "Properties" shape
+
+- in writing, the shape in the "Properties" field is deduct from raw data after the info line. Internally, the "Properties" is ensure the same with the real shape. It is been verified in the frame creation. The frame is not able to be created by hand (I do not provide any constructors from the struct) from struct but always from raw text.
+- in reading, the "Properties" is read and stored, and the deduct shape is compute and validate against the claimed "Properties" shape. If not conform with each other, parsing should fail.
+
+### Output format backward `libAtoms/extxyz` read compatibility
+
+The output format is constrained with following rule, in order that the output format can be read by the legacy `libAtoms/extxyz`.
+
+- No leading spaces for each line.
+- `Properties` printed as the last key-value pair in the info line.
+
+### Extend input format support
+
+- accept leading spaces for each line.
+- accept the info line is not key-value pair to able to parse unextend xyz format (with default Properties shape setup).
+
+### Extend matrix format
+
+- key with "Lattice" (or "lattice"/"lAttice"/... case-insensitive) is treat differently
+- lattice store column-wise per vector.
+- other matrix are formatted by array of (rows as arrays) as for example "[[e1, e2], [e3, e4], [e5, e6]]"
+- empty array is invalid and cause parsing error e.g. `[]` is invalid.
 
 ## dev
 
@@ -10,3 +87,9 @@ Clone `libAtoms/extxyz` source code (and its submodule `libcleri` for language p
 git clone --recurse-submodules https://github.com/extxyz/extxyz-rs.git
 cd extxyz-rs
 ```
+
+## Roadmap
+
+- [ ] Julia binding
+- [x] ~~Fortran binding (not planned)~~
+- [ ] ccmat integration through features tag
