@@ -264,7 +264,10 @@ impl FromPtr for DictHandler {
 pub fn read_frame<R>(
     rd: &mut R,
     comment_override: Option<&str>,
-) -> Result<(u32, DictHandler, DictHandler)> {
+) -> Result<(u32, DictHandler, DictHandler)>
+where
+    R: BufRead,
+{
     let kv_grammar = unsafe { bindings::compile_extxyz_kv_grammar() };
 
     // Prepare output variables

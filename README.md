@@ -15,10 +15,16 @@ You should use `extxyz/extxyz-ng` if you want
 
 - robust parsing that won't end up at segmentfault when your input is slightly misalign (e.g. leading spaces)
 - nice error showing you where exactly the input is not able to be parsed.
+- nice formatting write to the output, it takes care of accurate alignment for every format.
+- read from flexible input that compatible for legacy libAtoms/extxyz but no segfalut for what expected to be readable.
 - latest python version support.
 - use it in WebAssembly.
 - use it as a rust dependency.
 - streaming on read/write without blowup you RAM for trajactories of large structure.
+
+## Writer formatting
+
+- keys and values in the info line keeps its original format
 
 ## Round-trip tests
 
@@ -27,6 +33,10 @@ I run following round-trip tests to ensure the behavior align with old specifica
 
 - `.xyz` --`extxyz-ng`/read --> inner --`extxyz-ng`/write--> `.xyz`-01 --`cextxyz`/read--> inner --> `.xyz`-02
 - test xyz-01 exatly the same as xyz-02 in content.
+
+## TODO: some ambiguse inputs that need to recheck for legacy and new parser
+- what if Properties has same keys but different shape? will undefiened override happens?
+- arr rows has spaces padding cause segfault
 
 ## Specification
 
@@ -60,7 +70,7 @@ The output format is constrained with following rule, in order that the output f
 ### Extend input format support
 
 - accept leading spaces for each line.
-- accept the info line is not key-value pair to able to parse unextend xyz format (with default Propecies shape setup).
+- accept the info line is not key-value pair to able to parse unextend xyz format (with default Properties shape setup).
 
 ### Extend matrix format
 

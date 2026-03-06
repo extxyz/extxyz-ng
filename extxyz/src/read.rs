@@ -17,11 +17,11 @@ use nom::{
     IResult, Parser,
 };
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     io::{self, BufRead},
 };
 
-fn _read_frame_native<R>(rd: &mut R, comment_override: Option<&str>) -> io::Result<Frame>
+pub(crate) fn _read_frame_native<R>(rd: &mut R, comment_override: Option<&str>) -> io::Result<Frame>
 where
     R: BufRead,
 {
@@ -243,14 +243,28 @@ fn parse_2d_array(inp: &[u8]) -> IResult<&[u8], Value> {
                 .collect::<Vec<_>>();
             Ok((inp_, Value::MatrixBool(vs, (nr as u32, nc))))
         }
-        Value::VecText(texts, _) => todo!(),
+        Value::VecText(_, nc) => {
+            let nc = *nc;
+            let nr = vals.len();
+            let vs = vals
+                .into_iter()
+                .map(|v| {
+                    let Value::VecText(i, x) = v else {
+                        unreachable!()
+                    };
+                    debug_assert_eq!(x, nc);
+                    i
+                })
+                .collect::<Vec<_>>();
+            Ok((inp_, Value::MatrixText(vs, (nr as u32, nc))))
+        }
         _ => unreachable!(),
     }
 }
 
-fn recognize_2d_array(inp: &[u8]) -> IResult<&[u8], &[u8]> {
-    recognize(parse_2d_array).parse(inp)
-}
+// fn recognize_2d_array(inp: &[u8]) -> IResult<&[u8], &[u8]> {
+//     recognize(parse_2d_array).parse(inp)
+// }
 
 fn parse_1d_array(inp: &[u8]) -> IResult<&[u8], Value> {
     let (inp_, mut vals) = delimited(
@@ -321,9 +335,9 @@ fn parse_1d_array(inp: &[u8]) -> IResult<&[u8], Value> {
     }
 }
 
-fn recognize_1d_array(inp: &[u8]) -> IResult<&[u8], &[u8]> {
-    recognize(parse_1d_array).parse(inp)
-}
+// fn recognize_1d_array(inp: &[u8]) -> IResult<&[u8], &[u8]> {
+//     recognize(parse_1d_array).parse(inp)
+// }
 
 #[derive(Debug)]
 struct InnerParseError;
@@ -393,6 +407,7 @@ fn promote_values_1d(vals: &mut [Value]) -> Result<(), InnerParseError> {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn parse_info_line(inp: &[u8]) -> IResult<&[u8], Vec<(&[u8], &[u8])>> {
     let (inp, kv) = delimited(
         multispace0,
@@ -430,6 +445,7 @@ fn parse_properties<'a>(inp: &'a [u8]) -> IResult<&'a [u8], PropShape<'a>> {
         )));
     }
 
+    // TODO: check key name should not duplicate, because that is the name as keys for arrs
     let mut mp = Vec::new();
     for chunk in segments.chunks(3) {
         let id = chunk[0];
@@ -479,7 +495,8 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
 
     let (_, info_kv) = all_consuming(parse_info_line).parse(line)?;
 
-    let mut kv = HashMap::new();
+    // use BTreeMap so the info is stored in order
+    let mut kv = BTreeMap::new();
 
     for (k, v) in info_kv {
         let old_val = kv.insert(k, v);
@@ -975,7 +992,7 @@ mod tests {
     #[test]
     fn test_parse_frame_default() {
         let inp = &br#"2
-Properties=species:S:1:pos:R:3 key1=aa
+Properties=species:S:1:pos:R:3 key1=aa key2=87 key3=thisisaverylongstring ZZPnonsense=65.9
 Mn 0.0 0.5 0.5
 C 0.0 0.5 0.3
 "#[..];
@@ -984,6 +1001,33 @@ C 0.0 0.5 0.3
             .map_err(|err| err.map_input(|inp| str::from_utf8(inp).unwrap()))
             .unwrap();
         let frame = TFrame(frame);
-        println!("{}", frame);
+
+        let expect = r#"2
+ZZPnonsense=65.90000000 key1=aa key2=87 key3=thisisaverylongstring Properties=species:S:1:pos:R:3
+Mn          0.00000000       0.50000000       0.50000000
+C           0.00000000       0.50000000       0.30000000
+"#;
+        assert_eq!(format!("{frame}"), expect);
+    }
+
+    #[test]
+    fn test_parse_frame_without_properties() {
+        let inp = &br#"2
+key1=aa key2=87 key3=thisisaverylongstring ZZPnonsense=65.9
+Mn 0.0 0.5 0.5
+C 0.0 0.5 0.3
+"#[..];
+
+        let (_, frame) = parse_frame(inp)
+            .map_err(|err| err.map_input(|inp| str::from_utf8(inp).unwrap()))
+            .unwrap();
+        let frame = TFrame(frame);
+
+        let expect = r#"2
+ZZPnonsense=65.90000000 key1=aa key2=87 key3=thisisaverylongstring Properties=species:S:1:pos:R:3
+Mn          0.00000000       0.50000000       0.50000000
+C           0.00000000       0.50000000       0.30000000
+"#;
+        assert_eq!(format!("{frame}"), expect);
     }
 }

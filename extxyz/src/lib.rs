@@ -5,6 +5,8 @@ use std::io::{BufRead, Write};
 use extxyz_sys::{read_frame as _read_frame, CextxyzError};
 use extxyz_types::{escape, Frame, Value};
 
+use crate::read::_read_frame_native;
+
 pub type Result<T> = std::result::Result<T, ExtxyzError>;
 
 #[derive(Debug)]
@@ -50,8 +52,13 @@ pub fn read_frame<R>(rd: &mut R) -> Result<Frame>
 where
     R: BufRead,
 {
-    let (natoms, info, arrs) = _read_frame(rd, None)?;
-    let frame = Frame { natoms, info, arrs };
+    let wellwelllegacy = true;
+    let frame = if wellwelllegacy {
+        let (natoms, info, arrs) = _read_frame(rd, None)?;
+        Frame { natoms, info, arrs }
+    } else {
+        _read_frame_native(rd, None)?
+    };
     Ok(frame)
 }
 
@@ -84,21 +91,6 @@ where
 
     write!(w, "\"")?;
 
-    Ok(())
-}
-
-fn write_vec<T, W>(w: &mut W, s: &[T]) -> Result<()>
-where
-    T: std::fmt::Display,
-    W: Write,
-{
-    let indent = " ".repeat(4);
-    let s = s
-        .iter()
-        .map(|i| format!("{i}"))
-        .collect::<Vec<_>>()
-        .join(&indent);
-    write!(w, "{s}")?;
     Ok(())
 }
 
@@ -165,7 +157,6 @@ where
     }
 
     // "Properties" deduct from the arrs
-    write!(w, " ")?;
     write!(w, "Properties=")?;
 
     let mut s = String::new();
@@ -203,27 +194,75 @@ where
         while let Some((_, v)) = iter.next() {
             let i = i as usize;
 
+            // In legacy the libAtoms/extxyz's c impl the output format to:
+            // #define INTEGER_FMT "%8d"
+            // #define FLOAT_FMT "%16.8f"
+            // #define STRING_FMT "%s"
+            // #define BOOL_FMT "%.1s"
+
+            // new format rule of arr printing is:
+            // - for text, if it <8, pad to width 8 and left align (backward compatible otherwise
+            // shitty libAtoms/extxyz throw segfault), if its len >8 padding len +2
+            // - for float, the single value trimed to .8 precision with width of 16.
+            // - interger %8d
+            // - bool .1s
+
             // store the columns but write row by row
             match v {
                 Value::VecInteger(items, _) => write!(w, "{}", items[i])?,
-                Value::VecFloat(items, _) => write!(w, "{}", items[i])?,
+                Value::VecFloat(items, _) => write!(w, "{:>16.8}", items[i])?,
                 Value::VecBool(items, _) => write!(w, "{}", items[i])?,
-                Value::VecText(items, _) => write!(w, "{}", items[i])?,
+                Value::VecText(items, _) => {
+                    let s = &items[i];
+                    let sl = (*s).len();
+                    if sl > 5 {
+                        write!(w, "{1:<0$}", sl + 2, items[i])?
+                    } else {
+                        write!(w, "{:<5}", items[i])?
+                    }
+                }
                 Value::MatrixInteger(items, _) => {
                     let s = &items[i];
-                    write_vec(w, s)?;
+                    let indent = " ";
+                    let s = s
+                        .iter()
+                        .map(|i| format!("{i}"))
+                        .collect::<Vec<_>>()
+                        .join(indent);
+                    write!(w, "{s}")?;
                 }
                 Value::MatrixFloat(items, _) => {
                     let s = &items[i];
-                    write_vec(w, s)?;
+                    let indent = " ";
+                    let s = s
+                        .iter()
+                        .map(|i| {
+                            let s = format!("{:>16.8}", i);
+                            s
+                        })
+                        .collect::<Vec<_>>()
+                        .join(indent);
+                    write!(w, "{s}")?;
                 }
                 Value::MatrixBool(items, _) => {
                     let s = &items[i];
-                    write_vec(w, s)?;
+                    let indent = " ";
+                    let s = s
+                        .iter()
+                        .map(|i| format!("{i}"))
+                        .collect::<Vec<_>>()
+                        .join(indent);
+                    write!(w, "{s}")?;
                 }
                 Value::MatrixText(items, _) => {
                     let s = &items[i];
-                    write_vec(w, s)?;
+                    let indent = " ";
+                    let s = s
+                        .iter()
+                        .map(|i| format!("{i}"))
+                        .collect::<Vec<_>>()
+                        .join(indent);
+                    write!(w, "{s}")?;
                 }
                 _ => {
                     // this is unreachable if the inner dict is not create manually
@@ -234,7 +273,7 @@ where
             }
 
             if iter.peek().is_some() {
-                write!(w, "   ")?; // 3 spaces
+                write!(w, " ")?; // 1 enforced space
             }
         }
 
@@ -287,16 +326,26 @@ C         -5.53758        3.70936        0.63504
 C         -7.28250        4.71303       -3.82016
 "#;
             let mut rd = Cursor::new(inp.as_bytes());
-            let frame = read_frame(&mut rd).unwrap();
-            frame
+            read_frame(&mut rd).unwrap()
         }
     }
+
+    // // For test printing purpose
+    // struct TFrame(Frame);
+    //
+    // impl std::fmt::Display for TFrame {
+    //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    //         let mut buf = Vec::new();
+    //         write_frame(&mut buf, &self.0).map_err(|_| std::fmt::Error)?;
+    //         let s = std::str::from_utf8(&buf).map_err(|_| std::fmt::Error)?;
+    //         f.write_str(s)
+    //     }
+    // }
 
     #[test]
     fn test_write_frame() {
         // this is a round trip from a text -> Frame -> text
         let frame = Frame::new_example();
-
         let mut buf = Vec::new();
         {
             let mut w = BufWriter::new(&mut buf);
@@ -305,11 +354,11 @@ C         -7.28250        4.71303       -3.82016
 
         let s = String::from_utf8(buf).unwrap();
         let expect = r#"4
-key1=a key2=a/b key3=a@b key4=a@b Properties=species:S:1:pos:R:3
-Mg        -4.25650000          3.79180000         -2.54123000
-C        -1.15405000          2.86652000         -1.26699000
-C        -5.53758000          3.70936000          0.63504000
-C        -7.28250000          4.71303000         -3.82016000
+key1=a key2=a/b key3=a@b key4=a@bProperties=species:S:1:pos:R:3
+Mg         -4.25650000       3.79180000      -2.54123000
+C          -1.15405000       2.86652000      -1.26699000
+C          -5.53758000       3.70936000       0.63504000
+C          -7.28250000       4.71303000      -3.82016000
 "#;
         assert_eq!(s, expect);
     }

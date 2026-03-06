@@ -160,20 +160,19 @@ impl From<&str> for Text {
     }
 }
 
-// In the c impl the output format to:
-// #define INTEGER_FMT "%8d"
-// #define FLOAT_FMT "%16.8f"
-// #define STRING_FMT "%s"
-// #define BOOL_FMT "%.1s"
-
 impl std::fmt::Display for Integer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:8}", self.0)
+        write!(f, "{}", self.0)
     }
 }
 impl std::fmt::Display for FloatNum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:16.8}", self.0)
+        // default .8 precision and no other formatter if not override
+        if f.precision().is_some() {
+            std::fmt::Display::fmt(&self.0, f)
+        } else {
+            write!(f, "{:.8}", self.0)
+        }
     }
 }
 impl std::fmt::Display for Boolean {
@@ -186,8 +185,8 @@ impl std::fmt::Display for Boolean {
 }
 impl std::fmt::Display for Text {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // XXX: can this be formatted? I remember too many space in info line cause segfault
-        write!(f, "{}", escape(&self.0))
+        let escaped = escape(&self.0);
+        f.pad(&escaped)
     }
 }
 
