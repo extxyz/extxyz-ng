@@ -10,7 +10,7 @@ use nom::{
         complete::{multispace0, space0, space1},
         streaming,
     },
-    combinator::{all_consuming, map, map_res, recognize, verify},
+    combinator::{all_consuming, map, map_res, opt, recognize, verify},
     multi::{many0, separated_list0, separated_list1},
     number,
     sequence::{delimited, separated_pair, terminated},
@@ -154,7 +154,8 @@ fn parse_bare_properties_str(inp: &[u8]) -> IResult<&[u8], Value> {
     let s = String::from_utf8(inp.to_vec()).map_err(|_| {
         nom::Err::Failure(nom::error::Error::new(inp, nom::error::ErrorKind::Verify))
     })?;
-    Ok((remain, Value::Str(Text::from(s))))
+    let v = Value::Str(Text::from(s));
+    Ok((remain, v))
 }
 
 fn parse_kv_right(inp: &[u8]) -> IResult<&[u8], Value> {
@@ -166,9 +167,11 @@ fn parse_kv_right(inp: &[u8]) -> IResult<&[u8], Value> {
         parse_int,
         // bool comes before str, to avoid boll true -> str "true"
         parse_bool,
+        // quete_str first because it is most picky to parse, must have "" around
+        parse_quote_str,
+        // quotet_properties_str is included in parse_quote_str
         parse_bare_properties_str,
         parse_bare_str,
-        parse_quote_str,
     ))
     .parse(inp)
 }
@@ -184,6 +187,48 @@ fn recognize_kv_right(inp: &[u8]) -> IResult<&[u8], &[u8]> {
 
 fn recognize_kv_left(inp: &[u8]) -> IResult<&[u8], &[u8]> {
     recognize(parse_kv_left).parse(inp)
+}
+
+fn parse_2d_arr_3x3_flatten(inp: &[u8]) -> IResult<&[u8], Value> {
+    let (inp, mut vals) = separated_list0(space1, parse_kv_right).parse(inp)?;
+    if vals.len() != 9 {
+        return Err(nom::Err::Failure(nom::error::Error::new(
+            inp,
+            nom::error::ErrorKind::Verify,
+        )));
+    }
+    promote_values_1d(&mut vals).map_err(|_| {
+        nom::Err::Failure(nom::error::Error::new(inp, nom::error::ErrorKind::Verify))
+    })?;
+
+    match &vals[0] {
+        Value::Integer(_) => {
+            let vals = vals
+                .into_iter()
+                .map(|v| v.as_integer().expect("not an integer"))
+                .collect::<Vec<_>>();
+            let row1 = vec![vals[0], vals[3], vals[6]];
+            let row2 = vec![vals[1], vals[4], vals[7]];
+            let row3 = vec![vals[2], vals[5], vals[8]];
+            let vs = vec![row1, row2, row3];
+            Ok((inp, Value::MatrixInteger(vs, (3, 3))))
+        }
+        Value::Float(_) => {
+            let vals = vals
+                .into_iter()
+                .map(|v| v.as_float().expect("not a float"))
+                .collect::<Vec<_>>();
+            let row1 = vec![vals[0], vals[3], vals[6]];
+            let row2 = vec![vals[1], vals[4], vals[7]];
+            let row3 = vec![vals[2], vals[5], vals[8]];
+            let vs = vec![row1, row2, row3];
+            Ok((inp, Value::MatrixFloat(vs, (3, 3))))
+        }
+        _ => Err(nom::Err::Failure(nom::error::Error::new(
+            inp,
+            nom::error::ErrorKind::Verify,
+        ))),
+    }
 }
 
 fn parse_2d_array(inp: &[u8]) -> IResult<&[u8], Value> {
@@ -537,7 +582,18 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
 
     // TODO: latt can be a matrix wrapped inside a pair of double quotes, test it
     if let Some(latt) = maybe_latt {
-        let (_, latt) = parse_2d_array(latt)?;
+        let opt_quote_parse_2d_array = delimited(
+            opt(tag(b"\"".as_ref())),
+            parse_2d_array,
+            opt(tag(b"\"".as_ref())),
+        );
+        let opt_quote_parse_2d_arr_3x3_flatten = delimited(
+            opt(tag(b"\"".as_ref())),
+            parse_2d_arr_3x3_flatten,
+            opt(tag(b"\"".as_ref())),
+        );
+        let (_, latt) =
+            alt((opt_quote_parse_2d_array, opt_quote_parse_2d_arr_3x3_flatten)).parse(latt)?;
         info.push(("Lattice".to_string(), latt));
     }
     info.push(("Properties".to_string(), prop_shape_value));
@@ -664,6 +720,7 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
         // bring the rest out as remaining input
         input = rest;
     }
+    let (input, _) = multispace0(input)?;
     debug_assert!(input.is_empty());
 
     // TODO: zero-copy
@@ -980,6 +1037,44 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_parse_info_line_with_str() {
+        // key_value use recogonize instead of doing further parse no extxyz::Value
+        let valid_expects: &[&[u8]] = &[
+            br#"key1=aa key2=bb pp=what"#,
+            br#"key1=aa key2=bb pp= what"#,
+        ];
+        for expect in valid_expects {
+            let (remain, v) = parse_info_line(expect).unwrap();
+            assert!(remain.is_empty());
+            assert_eq!(
+                format!(
+                    "{}={}",
+                    str::from_utf8(v[2].0).unwrap(),
+                    str::from_utf8(v[2].1).unwrap(),
+                ),
+                "pp=what".to_string()
+            );
+        }
+
+        let valid_expects: &[&[u8]] = &[
+            br#"key1=aa key2=bb pp="what""#,
+            br#"key1=aa key2=bb pp=  "what""#,
+        ];
+        for expect in valid_expects {
+            let (remain, v) = parse_info_line(expect).unwrap();
+            assert!(remain.is_empty());
+            assert_eq!(
+                format!(
+                    "{}={}",
+                    str::from_utf8(v[2].0).unwrap(),
+                    str::from_utf8(v[2].1).unwrap(),
+                ),
+                "pp=\"what\"".to_string()
+            );
+        }
+    }
+
     struct TFrame(Frame);
 
     impl std::fmt::Display for TFrame {
@@ -1029,6 +1124,30 @@ C 0.0 0.5 0.3
 ZZPnonsense=65.90000000 key1=aa key2=87 key3=thisisaverylongstring Properties=species:S:1:pos:R:3
 Mn          0.00000000       0.50000000       0.50000000
 C           0.00000000       0.50000000       0.30000000
+"#;
+        assert_eq!(format!("{frame}"), expect);
+    }
+
+    #[test]
+    fn test_parse_lattice_from_flatten() {
+        let inp = &br#"3
+Lattice="5.0 1.0 0.0 0.0 5.0 2.0 1.0 0.4 5.0" Properties=species:S:1:pos:R:3
+Si    0.0    0.0    0.0
+Si    2.5    2.5    2.5
+O     1.25   1.25   1.25
+"#[..];
+
+        let (_, frame) = parse_frame(inp)
+            .map_err(|err| err.map_input(|inp| str::from_utf8(inp).unwrap()))
+            .unwrap();
+        let frame = TFrame(frame);
+        println!("{}", frame);
+
+        let expect = r#"3
+Lattice=[[5.00000000, 0.00000000, 1.00000000], [1.00000000, 5.00000000, 0.40000000], [0.00000000, 2.00000000, 5.00000000]] Properties=species:S:1:pos:R:3
+Si          0.00000000       0.00000000       0.00000000
+Si          2.50000000       2.50000000       2.50000000
+O           1.25000000       1.25000000       1.25000000
 "#;
         assert_eq!(format!("{frame}"), expect);
     }

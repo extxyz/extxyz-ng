@@ -208,6 +208,36 @@ pub enum Value {
     Unsupported,
 }
 
+impl Value {
+    pub fn as_integer(self) -> Option<Integer> {
+        match self {
+            Value::Integer(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn as_float(self) -> Option<FloatNum> {
+        match self {
+            Value::Float(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(self) -> Option<Boolean> {
+        match self {
+            Value::Bool(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(self) -> Option<Text> {
+        match self {
+            Value::Str(i) => Some(i),
+            _ => None,
+        }
+    }
+}
+
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fn fmt_array<T: std::fmt::Display>(arr: &[T]) -> String {
