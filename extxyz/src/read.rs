@@ -465,6 +465,12 @@ fn parse_info_line(inp: &[u8]) -> IResult<&[u8], Vec<(&[u8], &[u8])>> {
     Ok((inp, kv))
 }
 
+#[allow(clippy::type_complexity)]
+fn parse_no_equal_sign_line(inp: &[u8]) -> IResult<&[u8], Vec<(&[u8], &[u8])>> {
+    let (inp, ln) = take_while1(|c: u8| c != b'=').parse(inp)?;
+    Ok((inp, vec![(&b"comment"[..], ln)]))
+}
+
 #[derive(Debug, Hash, PartialEq, Eq)]
 enum Ty {
     // integer
@@ -540,7 +546,11 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
     )
     .parse(input)?;
 
-    let (_, info_kv) = all_consuming(parse_info_line).parse(line)?;
+    let (_, info_kv) = alt((
+        all_consuming(parse_info_line),
+        all_consuming(parse_no_equal_sign_line),
+    ))
+    .parse(line)?;
 
     // use BTreeMap so the info is stored in order
     let mut kv = BTreeMap::new();
@@ -573,11 +583,18 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
 
     let maybe_latt = kv.remove("Lattice".as_bytes());
 
-    // XXX: latt and prop_shape better to be stored separatly from pure_kv
+    // XXX: comment, latt and prop_shape better to be stored separatly from pure_kv
     let mut info = Vec::with_capacity(kv.len() + 2);
     for (k, v) in kv {
-        let (_, v) = parse_kv_right(v)?;
-        info.push((String::from_utf8(k.to_vec()).expect("utf8"), v));
+        if k == &b"comment"[..] {
+            let utf8_str = str::from_utf8(v).map_err(|_| {
+                nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Verify))
+            })?;
+            info.push(("comment".to_string(), Value::Str(Text::from(utf8_str))));
+        } else {
+            let (_, v) = parse_kv_right(v)?;
+            info.push((String::from_utf8(k.to_vec()).expect("utf8"), v));
+        }
     }
 
     // TODO: latt can be a matrix wrapped inside a pair of double quotes, test it
@@ -1141,10 +1158,32 @@ O     1.25   1.25   1.25
             .map_err(|err| err.map_input(|inp| str::from_utf8(inp).unwrap()))
             .unwrap();
         let frame = TFrame(frame);
-        println!("{}", frame);
 
         let expect = r#"3
 Lattice=[[5.00000000, 0.00000000, 1.00000000], [1.00000000, 5.00000000, 0.40000000], [0.00000000, 2.00000000, 5.00000000]] Properties=species:S:1:pos:R:3
+Si          0.00000000       0.00000000       0.00000000
+Si          2.50000000       2.50000000       2.50000000
+O           1.25000000       1.25000000       1.25000000
+"#;
+        assert_eq!(format!("{frame}"), expect);
+    }
+
+    #[test]
+    fn test_no_equal_sign_line() {
+        let inp = &br#"3
+full line that has no equal will be a comment line
+Si    0.0    0.0    0.0
+Si    2.5    2.5    2.5
+O     1.25   1.25   1.25
+"#[..];
+
+        let (_, frame) = parse_frame(inp)
+            .map_err(|err| err.map_input(|inp| str::from_utf8(inp).unwrap()))
+            .unwrap();
+        let frame = TFrame(frame);
+
+        let expect = r#"3
+comment="full line that has no equal will be a comment line" Properties=species:S:1:pos:R:3
 Si          0.00000000       0.00000000       0.00000000
 Si          2.50000000       2.50000000       2.50000000
 O           1.25000000       1.25000000       1.25000000
