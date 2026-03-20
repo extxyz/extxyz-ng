@@ -4,6 +4,13 @@ Extended XYZ specification and parsers.
 
 Implemented in rust, with python binding provided 
 
+⚠️ Project status: This repository is still under active development.
+Basic read and write functionality is implemented, but the API and features are not yet finalized or fully polished.
+
+Benchmarking is a key upcoming focus, particularly on large-scale structures, to ensure performance and robustness.
+
+See below the roadmap section for the planned steps toward the first stable release.
+
 ## Why/when you should/shouldnt use old c implementation aka `libAtoms/extxyz`
 
 You should use [`libAtoms/extxyz`](https://github.com/libAtoms/extxyz) if you want
@@ -91,5 +98,9 @@ cd extxyz-rs
 ## Roadmap
 
 - [ ] Julia binding
+- [ ] Python binding
+- [ ] benchmark on speed when parsing large files.
+- [ ] read multiple frames.
+- [ ] benchmark the memory usage when parsing
 - [x] ~~Fortran binding (not planned)~~
 - [ ] ccmat integration through features tag
