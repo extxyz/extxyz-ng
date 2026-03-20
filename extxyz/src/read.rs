@@ -25,34 +25,74 @@ pub(crate) fn _read_frame_native<R>(rd: &mut R, comment_override: Option<&str>) 
 where
     R: BufRead,
 {
-    loop {
-        let buf = rd.fill_buf()?;
-        if buf.is_empty() {
+    // loop {
+    //     let buf = rd.fill_buf()?;
+    //     if buf.is_empty() {
+    //         return Err(io::Error::new(
+    //             io::ErrorKind::UnexpectedEof,
+    //             "EOF reached before parsing frame",
+    //         ));
+    //     }
+    //
+    //     match parse_frame(buf) {
+    //         Ok((remaining, mut frame)) => {
+    //             let amount = buf.len() - remaining.len();
+    //             rd.consume(amount);
+    //             if let Some(comment) = comment_override {
+    //                 frame.set_comment(comment);
+    //             }
+    //
+    //             return Ok(frame);
+    //         }
+    //         Err(nom::Err::Incomplete(_needed)) => {
+    //             let len = buf.len();
+    //             rd.consume(len);
+    //
+    //             continue;
+    //         }
+    //         Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string())),
+    //     }
+    // }
+    let mut first_line = String::new();
+
+    // read first line → number of lines in this frame
+    rd.read_line(&mut first_line)?;
+    if first_line.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "EOF reached before reading frame size",
+        ));
+    }
+
+    // parse number of lines
+    let num_lines: usize = first_line
+        .trim()
+        .parse()
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+    // read exactly num_lines lines into a buffer
+    let mut buf = first_line.clone();
+    let mut line = String::new();
+    for _ in 0..=num_lines {
+        line.clear();
+        let n = rd.read_line(&mut line)?;
+        if n == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
-                "EOF reached before parsing frame",
+                "EOF reached before reading full frame",
             ));
         }
-
-        match parse_frame(buf) {
-            Ok((remaining, mut frame)) => {
-                let amount = buf.len() - remaining.len();
-                rd.consume(amount);
-                if let Some(comment) = comment_override {
-                    frame.set_comment(comment);
-                }
-
-                return Ok(frame);
-            }
-            Err(nom::Err::Incomplete(_needed)) => {
-                let len = buf.len();
-                rd.consume(len);
-
-                continue;
-            }
-            Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string())),
-        }
+        buf.push_str(&line);
     }
+    // dbg!(&buf);
+    parse_frame(buf.as_bytes())
+        .map(|(_remaining, mut frame)| {
+            if let Some(comment) = comment_override {
+                frame.set_comment(comment);
+            }
+            frame
+        })
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
 
 // XXX: can I lru cache this call?
@@ -531,7 +571,9 @@ fn parse_properties<'a>(inp: &'a [u8]) -> IResult<&'a [u8], PropShape<'a>> {
 }
 
 fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
+    // dbg!(str::from_utf8(input).unwrap());
     let (input, _) = streaming::multispace0(input)?;
+    // dbg!(str::from_utf8(input).unwrap());
     let (input, natoms) = map_res(streaming::digit1, |digits: &[u8]| {
         let s = std::str::from_utf8(digits).expect("digit1 expect ASCII");
         s.parse::<usize>()
@@ -545,6 +587,8 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
         streaming::newline,
     )
     .parse(input)?;
+
+    // dbg!(str::from_utf8(line).unwrap());
 
     let (_, info_kv) = alt((
         all_consuming(parse_info_line),
@@ -614,6 +658,7 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
         info.push(("Lattice".to_string(), latt));
     }
     info.push(("Properties".to_string(), prop_shape_value));
+    // dbg!(&info);
 
     // TODO: validate natoms and number of rows of the arr
 
@@ -621,9 +666,11 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
     for _i in 0..natoms {
         let (rest, line) = terminated(
             nom::bytes::streaming::take_until(&b"\n"[..]),
-            streaming::newline,
+            opt(streaming::newline),
         )
         .parse(input)?;
+
+        // dbg!(str::from_utf8(line).unwrap());
         let (_, mut vs_raw) = delimited(
             multispace0,
             separated_list1(
@@ -633,6 +680,7 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
             multispace0,
         )
         .parse(line)?;
+        // dbg!(&vs_raw);
 
         let mut loc: u8 = 0;
         for (name, ty, n) in &prop_shape {
@@ -738,7 +786,9 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
         input = rest;
     }
     let (input, _) = multispace0(input)?;
-    debug_assert!(input.is_empty());
+    // dbg!(str::from_utf8(input));
+    // debug_assert!(input.is_empty());
+    //
 
     // TODO: zero-copy
     let mut arrs: Vec<(String, Value)> = Vec::with_capacity(prop_shape.len());
@@ -1182,7 +1232,8 @@ O     1.25   1.25   1.25
             .unwrap();
         let frame = TFrame(frame);
 
-        let expect = r#"3
+        let expect = r#"
+3
 comment="full line that has no equal will be a comment line" Properties=species:S:1:pos:R:3
 Si          0.00000000       0.00000000       0.00000000
 Si          2.50000000       2.50000000       2.50000000

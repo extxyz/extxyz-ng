@@ -14,3 +14,30 @@ edition = "2021"
 extxyz-types = { path = "../extxyz-types" }
 nom = "8.0.0"
 
+[dependencies.extxyz-sys]
+path = "../extxyz-sys"
+optional = true
+
+[dev-dependencies]
+criterion = "0.5"
+extxyz-sys = { path = "../extxyz-sys" }
+
+[[bench]]
+name = "read_frame_alloc_vs_opt_alloc"
+harness = false
+
+[[bench]]
+name = "read_frame_rs_vs_c"
+harness = false
+
+[[bin]]
+name = "read_frame"
+path = "bin/read_frame.rs"
+
+[features]
+legacy_c = ["extxyz-sys"]
+
+[[bin]]
+name = "read_frame_legacy_c"
+path = "bin/read_frame_legacy_c.rs"
+
