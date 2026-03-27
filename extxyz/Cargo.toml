@@ -35,7 +35,7 @@ name = "read_frame"
 path = "bin/read_frame.rs"
 
 [features]
-legacy_c = ["extxyz-sys"]
+legacy = ["extxyz-sys"]
 
 [[bin]]
 name = "read_frame_legacy_c"

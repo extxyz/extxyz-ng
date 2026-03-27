@@ -1,12 +1,15 @@
-use std::{fs, io::{BufRead, BufReader, Cursor}};
+use std::{
+    fs,
+    io::{BufRead, Cursor},
+};
 
-use extxyz::{Frame, read_frame};
+use extxyz::Frame;
 
 pub fn read_frame_c_binding<R>(rd: &mut R) -> Frame
 where
     R: BufRead,
 {
-    #[cfg(feature = "legacy_c")]
+    #[cfg(feature = "legacy")]
     use extxyz_sys::read_frame as _read_frame;
     let (natoms, info, arrs) = _read_frame(rd, None).unwrap();
 

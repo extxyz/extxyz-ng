@@ -1,4 +1,4 @@
-use std::{fs, io::{BufReader, Cursor}};
+use std::{fs, io::Cursor};
 
 use extxyz::read_frame;
 
