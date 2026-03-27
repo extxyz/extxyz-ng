@@ -1,6 +1,6 @@
 /* native read parsed using `nom`
 */
-use extxyz_types::{DictHandler, FloatNum, Frame, Text, Value};
+use extxyz_types::{DictHandler, FloatNum, Frame, Integer, Text, Value};
 use nom::{
     self,
     branch::alt,
@@ -662,7 +662,165 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
 
     // TODO: validate natoms and number of rows of the arr
 
-    let mut mhs: HashMap<&str, Vec<Value>> = HashMap::with_capacity(prop_shape.len());
+    // let mut mhs: HashMap<&str, Vec<Value>> = HashMap::with_capacity(prop_shape.len());
+    // for _i in 0..natoms {
+    //     let (rest, line) = terminated(
+    //         nom::bytes::streaming::take_until(&b"\n"[..]),
+    //         opt(streaming::newline),
+    //     )
+    //     .parse(input)?;
+    //
+    //     // dbg!(str::from_utf8(line).unwrap());
+    //     let (_, mut vs_raw) = delimited(
+    //         multispace0,
+    //         separated_list1(
+    //             space1,
+    //             alt((parse_bare_str, parse_float, parse_int, parse_bool)),
+    //         ),
+    //         multispace0,
+    //     )
+    //     .parse(line)?;
+    //     // dbg!(&vs_raw);
+    //
+    //     let mut loc: u8 = 0;
+    //     for (name, ty, n) in &prop_shape {
+    //         if *n == 0 {
+    //             // TODO: verbose context error
+    //             return Err(nom::Err::Failure(nom::error::Error::new(
+    //                 rest,
+    //                 nom::error::ErrorKind::Verify,
+    //             )));
+    //         }
+    //         if *n == 1 {
+    //             let vv = std::mem::take(&mut vs_raw[loc as usize]);
+    //             mhs.entry(name).or_default().push(vv);
+    //             loc += *n;
+    //         } else {
+    //             let mut vv: Vec<Value> = Vec::with_capacity(*n as usize);
+    //             vv.resize_with(*n as usize, Default::default);
+    //             for i in 0..(*n) {
+    //                 vv[i as usize] = std::mem::take(&mut vs_raw[(i + loc) as usize]);
+    //             }
+    //             let vxs = match ty {
+    //                 Ty::I => {
+    //                     let vv = vv
+    //                         .into_iter()
+    //                         .map(|vv| {
+    //                             let Value::Integer(inner) = vv else {
+    //                                 // actual value not consistent with ty in prop_shape
+    //                                 return Err(nom::Err::Failure(nom::error::Error::new(
+    //                                     rest,
+    //                                     nom::error::ErrorKind::Verify,
+    //                                 )));
+    //                             };
+    //                             Ok(inner)
+    //                         })
+    //                         .collect::<Result<Vec<_>, _>>()?;
+    //                     let len = vv.len();
+    //                     Value::VecInteger(vv, len as u32)
+    //                 }
+    //                 Ty::R => {
+    //                     let vv = vv
+    //                         .into_iter()
+    //                         .map(|vv| {
+    //                             let inner = match vv {
+    //                                 Value::Integer(int_inner) => {
+    //                                     FloatNum::from(f64::from(*int_inner))
+    //                                 }
+    //                                 Value::Float(inner) => inner,
+    //                                 _ => {
+    //                                     // actual value not consistent with ty in prop_shape
+    //                                     return Err(nom::Err::Failure(nom::error::Error::new(
+    //                                         rest,
+    //                                         nom::error::ErrorKind::Verify,
+    //                                     )));
+    //                                 }
+    //                             };
+    //                             Ok(inner)
+    //                         })
+    //                         .collect::<Result<Vec<_>, _>>()?;
+    //                     let len = vv.len();
+    //                     Value::VecFloat(vv, len as u32)
+    //                 }
+    //                 Ty::L => {
+    //                     let vv = vv
+    //                         .into_iter()
+    //                         .map(|vv| {
+    //                             let Value::Bool(inner) = vv else {
+    //                                 // actual value not consistent with ty in prop_shape
+    //                                 return Err(nom::Err::Failure(nom::error::Error::new(
+    //                                     rest,
+    //                                     nom::error::ErrorKind::Verify,
+    //                                 )));
+    //                             };
+    //                             Ok(inner)
+    //                         })
+    //                         .collect::<Result<Vec<_>, _>>()?;
+    //                     let len = vv.len();
+    //                     Value::VecBool(vv, len as u32)
+    //                 }
+    //                 Ty::S => {
+    //                     let vv = vv
+    //                         .into_iter()
+    //                         .map(|vv| {
+    //                             let Value::Str(inner) = vv else {
+    //                                 // actual value not consistent with ty in prop_shape
+    //                                 return Err(nom::Err::Failure(nom::error::Error::new(
+    //                                     rest,
+    //                                     nom::error::ErrorKind::Verify,
+    //                                 )));
+    //                             };
+    //                             Ok(inner)
+    //                         })
+    //                         .collect::<Result<Vec<_>, _>>()?;
+    //                     let len = vv.len();
+    //                     Value::VecText(vv, len as u32)
+    //                 }
+    //             };
+    //             mhs.entry(name).or_default().push(vxs);
+    //             loc += *n;
+    //         }
+    //     }
+    //
+    //     // bring the rest out as remaining input
+    //     input = rest;
+    // }
+    // let (input, _) = multispace0(input)?;
+    // // dbg!(str::from_utf8(input));
+    // // debug_assert!(input.is_empty());
+    // //
+    //
+    // // TODO: zero-copy
+
+    // create the data container first based on the shape
+    let mut arrs: Vec<(String, Value)> = prop_shape
+        .iter()
+        .map(|(name, ty, n)| {
+            let value = match (ty, n) {
+                (Ty::I, 1) => Value::VecInteger(Vec::with_capacity(natoms), natoms as u32),
+                (Ty::R, 1) => Value::VecFloat(Vec::with_capacity(natoms), natoms as u32),
+                (Ty::L, 1) => Value::VecBool(Vec::with_capacity(natoms), natoms as u32),
+                (Ty::S, 1) => Value::VecText(Vec::with_capacity(natoms), natoms as u32),
+
+                (Ty::I, nc) => {
+                    Value::MatrixInteger(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
+                }
+                (Ty::R, nc) => {
+                    Value::MatrixFloat(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
+                }
+                (Ty::L, nc) => {
+                    Value::MatrixBool(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
+                }
+                (Ty::S, nc) => {
+                    Value::MatrixText(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
+                }
+            };
+
+            (name.to_string(), value)
+        })
+        .collect(); // let mut arrs: Vec<(String, Value)> = Vec::with_capacity(prop_shape.len());
+
+    // prop_shape -> Vec[("species", Vec<Str>, 23456), ("pos", Matrix<Float>, (3, 23455))]
     for _i in 0..natoms {
         let (rest, line) = terminated(
             nom::bytes::streaming::take_until(&b"\n"[..]),
@@ -680,245 +838,108 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
             multispace0,
         )
         .parse(line)?;
+        // N 171.64600 251.87400 224.87700
+        // ->
+        // Value::Str("N"), Value::Float(171.646), Value::(251.eee), Value::Float(224)
         // dbg!(&vs_raw);
 
-        let mut loc: u8 = 0;
-        for (name, ty, n) in &prop_shape {
-            if *n == 0 {
-                // TODO: verbose context error
-                return Err(nom::Err::Failure(nom::error::Error::new(
-                    rest,
-                    nom::error::ErrorKind::Verify,
-                )));
-            }
-            if *n == 1 {
-                let vv = std::mem::take(&mut vs_raw[loc as usize]);
-                mhs.entry(name).or_default().push(vv);
-                loc += *n;
-            } else {
-                let mut vv: Vec<Value> = Vec::with_capacity(*n as usize);
-                vv.resize_with(*n as usize, Default::default);
-                for i in 0..(*n) {
-                    vv[i as usize] = std::mem::take(&mut vs_raw[(i + loc) as usize]);
+        let mut loc = 0;
+        for ((name, ty, n), (_, ref mut arr)) in prop_shape.iter().zip(arrs.iter_mut()) {
+            // for _ in 0..natoms {
+            // }
+
+            match (ty, n, arr) {
+                (_, 0, _) => unreachable!(),
+                (Ty::I, 1, Value::VecInteger(v, _)) => {
+                    let Value::Integer(x) = std::mem::take(&mut vs_raw[loc]) else {
+                        unreachable!()
+                    };
+                    v.push(x);
                 }
-                let vxs = match ty {
-                    Ty::I => {
-                        let vv = vv
-                            .into_iter()
-                            .map(|vv| {
-                                let Value::Integer(inner) = vv else {
-                                    // actual value not consistent with ty in prop_shape
-                                    return Err(nom::Err::Failure(nom::error::Error::new(
-                                        rest,
-                                        nom::error::ErrorKind::Verify,
-                                    )));
-                                };
-                                Ok(inner)
-                            })
-                            .collect::<Result<Vec<_>, _>>()?;
-                        let len = vv.len();
-                        Value::VecInteger(vv, len as u32)
-                    }
-                    Ty::R => {
-                        let vv = vv
-                            .into_iter()
-                            .map(|vv| {
-                                let inner = match vv {
-                                    Value::Integer(int_inner) => {
-                                        FloatNum::from(f64::from(*int_inner))
-                                    }
-                                    Value::Float(inner) => inner,
-                                    _ => {
-                                        // actual value not consistent with ty in prop_shape
-                                        return Err(nom::Err::Failure(nom::error::Error::new(
-                                            rest,
-                                            nom::error::ErrorKind::Verify,
-                                        )));
-                                    }
-                                };
-                                Ok(inner)
-                            })
-                            .collect::<Result<Vec<_>, _>>()?;
-                        let len = vv.len();
-                        Value::VecFloat(vv, len as u32)
-                    }
-                    Ty::L => {
-                        let vv = vv
-                            .into_iter()
-                            .map(|vv| {
-                                let Value::Bool(inner) = vv else {
-                                    // actual value not consistent with ty in prop_shape
-                                    return Err(nom::Err::Failure(nom::error::Error::new(
-                                        rest,
-                                        nom::error::ErrorKind::Verify,
-                                    )));
-                                };
-                                Ok(inner)
-                            })
-                            .collect::<Result<Vec<_>, _>>()?;
-                        let len = vv.len();
-                        Value::VecBool(vv, len as u32)
-                    }
-                    Ty::S => {
-                        let vv = vv
-                            .into_iter()
-                            .map(|vv| {
-                                let Value::Str(inner) = vv else {
-                                    // actual value not consistent with ty in prop_shape
-                                    return Err(nom::Err::Failure(nom::error::Error::new(
-                                        rest,
-                                        nom::error::ErrorKind::Verify,
-                                    )));
-                                };
-                                Ok(inner)
-                            })
-                            .collect::<Result<Vec<_>, _>>()?;
-                        let len = vv.len();
-                        Value::VecText(vv, len as u32)
-                    }
-                };
-                mhs.entry(name).or_default().push(vxs);
-                loc += *n;
-            }
-        }
-
-        // bring the rest out as remaining input
-        input = rest;
-    }
-    let (input, _) = multispace0(input)?;
-    // dbg!(str::from_utf8(input));
-    // debug_assert!(input.is_empty());
-    //
-
-    // TODO: zero-copy
-    let mut arrs: Vec<(String, Value)> = Vec::with_capacity(prop_shape.len());
-    for (name, ty, n) in &prop_shape {
-        match (ty, n) {
-            (_, 0) => unreachable!(),
-            (Ty::I, 1) => {
-                let vinner = mhs
-                    .get(name)
-                    .expect("key not found from where it must exist");
-                let vinner = vinner
-                    .iter()
-                    .map(|i| {
-                        let Value::Integer(x) = i else { unreachable!() };
-                        *x
-                    })
-                    .collect::<Vec<_>>();
-                let vinner = Value::VecInteger(vinner, natoms as u32);
-                arrs.push((name.to_string(), vinner));
-            }
-            (Ty::R, 1) => {
-                let vinner = mhs
-                    .get(name)
-                    .expect("key not found from where it must exist");
-                let vinner = vinner
-                    .iter()
-                    .map(|i| {
-                        let Value::Float(x) = i else { unreachable!() };
-                        *x
-                    })
-                    .collect::<Vec<_>>();
-                let vinner = Value::VecFloat(vinner, natoms as u32);
-                arrs.push((name.to_string(), vinner));
-            }
-            (Ty::L, 1) => {
-                let vinner = mhs
-                    .get(name)
-                    .expect("key not found from where it must exist");
-                let vinner = vinner
-                    .iter()
-                    .map(|i| {
-                        let Value::Bool(x) = i else { unreachable!() };
-                        *x
-                    })
-                    .collect::<Vec<_>>();
-                let vinner = Value::VecBool(vinner, natoms as u32);
-                arrs.push((name.to_string(), vinner));
-            }
-            (Ty::S, 1) => {
-                let vinner = mhs
-                    .get(name)
-                    .expect("key not found from where it must exist");
-                let vinner = vinner
-                    .iter()
-                    .map(|i| {
-                        let Value::Str(x) = i else { unreachable!() };
-                        // TODO: ?? zero-copy?
-                        x.clone()
-                    })
-                    .collect::<Vec<_>>();
-                let vinner = Value::VecText(vinner, natoms as u32);
-                arrs.push((name.to_string(), vinner));
-            }
-            (Ty::I, nc) => {
-                let minner = mhs
-                    .get(name)
-                    .expect("key not found from where it must exist");
-                let minner = minner
-                    .iter()
-                    .map(|i| {
-                        let Value::VecInteger(vi, nx) = i else {
-                            unreachable!()
-                        };
-                        debug_assert_eq!(*nx, *nc as u32);
-                        vi.clone()
-                    })
-                    .collect::<Vec<_>>();
-                let minner = Value::MatrixInteger(minner, (natoms as u32, *nc as u32));
-                arrs.push((name.to_string(), minner));
-            }
-            (Ty::R, nc) => {
-                let minner = mhs
-                    .get(name)
-                    .expect("key not found from where it must exist");
-                let minner = minner
-                    .iter()
-                    .map(|i| {
-                        let Value::VecFloat(vi, nx) = i else {
-                            unreachable!()
-                        };
-                        debug_assert_eq!(*nx, *nc as u32);
-                        vi.clone()
-                    })
-                    .collect::<Vec<_>>();
-                let minner = Value::MatrixFloat(minner, (natoms as u32, *nc as u32));
-                arrs.push((name.to_string(), minner));
-            }
-            (Ty::L, nc) => {
-                let minner = mhs
-                    .get(name)
-                    .expect("key not found from where it must exist");
-                let minner = minner
-                    .iter()
-                    .map(|i| {
-                        let Value::VecBool(vi, nx) = i else {
-                            unreachable!()
-                        };
-                        debug_assert_eq!(*nx, *nc as u32);
-                        vi.clone()
-                    })
-                    .collect::<Vec<_>>();
-                let minner = Value::MatrixBool(minner, (natoms as u32, *nc as u32));
-                arrs.push((name.to_string(), minner));
-            }
-            (Ty::S, nc) => {
-                let minner = mhs
-                    .get(name)
-                    .expect("key not found from where it must exist");
-                let minner = minner
-                    .iter()
-                    .map(|i| {
-                        let Value::VecText(vi, nx) = i else {
-                            unreachable!()
-                        };
-                        debug_assert_eq!(*nx, *nc as u32);
-                        vi.clone()
-                    })
-                    .collect::<Vec<_>>();
-                let minner = Value::MatrixText(minner, (natoms as u32, *nc as u32));
-                arrs.push((name.to_string(), minner));
+                // (Ty::R, 1, mut xarr) => {
+                //     xarr = vs_raw[loc];
+                // }
+                // (Ty::L, 1, mut xarr) => {
+                //     xarr = vs_raw[loc];
+                // }
+                // (Ty::S, 1, mut xarr) => {
+                //     xarr = vs_raw[loc];
+                // }
+                // (Ty::I, nc, mut xarr) => {
+                //     match xarr {
+                //         Value::MatrixBool(m, _) => {
+                //         }
+                //         _ => todo!()
+                //     }
+                //     // xarr = vs_raw[loc..loc+nc]
+                //     // let minner = mhs
+                //     //     .get(name)
+                //     //     .expect("key not found from where it must exist");
+                //     // let minner = minner
+                //     //     .iter()
+                //     //     .map(|i| {
+                //     //         let Value::VecInteger(vi, nx) = i else {
+                //     //             unreachable!()
+                //     //         };
+                //     //         debug_assert_eq!(*nx, *nc as u32);
+                //     //         vi.clone()
+                //     //     })
+                //     //     .collect::<Vec<_>>();
+                //     // let minner = Value::MatrixInteger(minner, (natoms as u32, *nc as u32));
+                //     // arrs.push((name.to_string(), minner));
+                // }
+                // (Ty::R, nc) => {
+                //     let minner = mhs
+                //         .get(name)
+                //         .expect("key not found from where it must exist");
+                //     let minner = minner
+                //         .iter()
+                //         .map(|i| {
+                //             let Value::VecFloat(vi, nx) = i else {
+                //                 unreachable!()
+                //             };
+                //             debug_assert_eq!(*nx, *nc as u32);
+                //             vi.clone()
+                //         })
+                //         .collect::<Vec<_>>();
+                //     let minner = Value::MatrixFloat(minner, (natoms as u32, *nc as u32));
+                //     arrs.push((name.to_string(), minner));
+                // }
+                // (Ty::L, nc) => {
+                //     let minner = mhs
+                //         .get(name)
+                //         .expect("key not found from where it must exist");
+                //     let minner = minner
+                //         .iter()
+                //         .map(|i| {
+                //             let Value::VecBool(vi, nx) = i else {
+                //                 unreachable!()
+                //             };
+                //             debug_assert_eq!(*nx, *nc as u32);
+                //             vi.clone()
+                //         })
+                //         .collect::<Vec<_>>();
+                //     let minner = Value::MatrixBool(minner, (natoms as u32, *nc as u32));
+                //     arrs.push((name.to_string(), minner));
+                // }
+                // (Ty::S, nc) => {
+                //     let minner = mhs
+                //         .get(name)
+                //         .expect("key not found from where it must exist");
+                //     let minner = minner
+                //         .iter()
+                //         .map(|i| {
+                //             let Value::VecText(vi, nx) = i else {
+                //                 unreachable!()
+                //             };
+                //             debug_assert_eq!(*nx, *nc as u32);
+                //             vi.clone()
+                //         })
+                //         .collect::<Vec<_>>();
+                //     let minner = Value::MatrixText(minner, (natoms as u32, *nc as u32));
+                //     arrs.push((name.to_string(), minner));
+                // }
+                _ => todo!(),
             }
         }
     }
