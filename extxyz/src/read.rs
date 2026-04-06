@@ -746,36 +746,28 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
             match (ty, n, arr) {
                 (_, 0, _) => unreachable!(),
                 (Ty::I, 1, Value::VecInteger(v, _)) => {
-                    let x = std::mem::take(&mut vs_raw[loc]) else {
-                        unreachable!()
-                    };
+                    let x = std::mem::take(&mut vs_raw[loc]);
                     let (_, x) = parse_int(x).expect("parse int");
                     let Value::Integer(x) = x else { unreachable!() };
                     v.push(x);
                     loc += 1;
                 }
                 (Ty::R, 1, Value::VecFloat(v, _)) => {
-                    let x = std::mem::take(&mut vs_raw[loc]) else {
-                        unreachable!()
-                    };
+                    let x = std::mem::take(&mut vs_raw[loc]);
                     let (_, x) = parse_float(x).expect("parse float");
                     let Value::Float(x) = x else { unreachable!() };
                     v.push(x);
                     loc += 1;
                 }
                 (Ty::L, 1, Value::VecBool(v, _)) => {
-                    let x = std::mem::take(&mut vs_raw[loc]) else {
-                        unreachable!()
-                    };
+                    let x = std::mem::take(&mut vs_raw[loc]);
                     let (_, x) = parse_bool(x).expect("parse bool");
                     let Value::Bool(x) = x else { unreachable!() };
                     v.push(x);
                     loc += 1;
                 }
                 (Ty::S, 1, Value::VecText(v, _)) => {
-                    let x = std::mem::take(&mut vs_raw[loc]) else {
-                        unreachable!()
-                    };
+                    let x = std::mem::take(&mut vs_raw[loc]);
                     let (_, x) = parse_bare_str(x).expect("parse str");
                     let Value::Str(x) = x else { unreachable!() };
                     v.push(x);

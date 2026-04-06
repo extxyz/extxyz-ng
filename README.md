@@ -125,8 +125,8 @@ cd extxyz-rs
 
 - [ ] Julia binding
 - [ ] Python binding
-- [ ] benchmark on speed when parsing large files.
+- [x] benchmark on speed when parsing large files.
 - [ ] read multiple frames.
-- [ ] benchmark the memory usage when parsing
+- [x] benchmark the memory usage when parsing
 - [x] ~~Fortran binding (not planned)~~
 - [ ] ccmat integration through features tag
