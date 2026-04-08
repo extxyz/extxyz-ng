@@ -21,7 +21,10 @@ use std::{
     io::{self, BufRead},
 };
 
-pub(crate) fn _read_frame_native<R>(rd: &mut R, comment_override: Option<&str>) -> io::Result<Frame>
+pub(crate) fn _read_frame_native<R>(
+    rd: &mut R,
+    comment_override: Option<&str>,
+) -> io::Result<Option<Frame>>
 where
     R: BufRead,
 {
@@ -58,10 +61,7 @@ where
     // read first line → number of lines in this frame
     rd.read_line(&mut first_line)?;
     if first_line.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::UnexpectedEof,
-            "EOF reached before reading frame size",
-        ));
+        return Ok(None);
     }
 
     // parse number of lines
@@ -77,8 +77,8 @@ where
     let mut line = String::new();
     for _ in 0..=num_lines {
         line.clear();
-        let n = rd.read_line(&mut line)?;
-        if n == 0 {
+        let nbytes = rd.read_line(&mut line)?;
+        if nbytes == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "EOF reached before reading full frame",
@@ -86,13 +86,13 @@ where
         }
         buf.push_str(&line);
     }
-    // dbg!(&buf);
+
     parse_frame(buf.as_bytes())
         .map(|(_remaining, mut frame)| {
             if let Some(comment) = comment_override {
                 frame.set_comment(comment);
             }
-            frame
+            Some(frame)
         })
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }

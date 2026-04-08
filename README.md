@@ -38,6 +38,8 @@ The benchmark is done in parsing a > 20k atoms structure.
 
 ## Memory benchmark
 
+### No memory leak in rust implementation 
+
 The rust implementation is memory safe, no memory leak validated by valgrind.
 
 On the contrary, `libAtoms/extxyz` has memory leak, manifested by:
@@ -53,6 +55,39 @@ valgrind --leak-check=full ./target/release/read_frame_legacy_c
 ==1485786==    by 0x4018EF8: std::rt::lang_start::{{closure}} (in /home/jyu/rust/extxyz-ng/target/release/read_frame_legacy_c)
 ==1485786==    by 0x402BCA5: std::rt::lang_start_internal (in /home/jyu/rust/extxyz-ng/target/release/read_frame_legacy_c)
 ==1485786==    by 0x4018EE4: main (in /home/jyu/rust/extxyz-ng/target/release/read_frame_legacy_c)
+```
+
+### low memory footprint when read frames
+
+Rust implementation use buffer to read frames, the memory usage is not cumulated with the increasing of read frames.
+An iterator is returned, which has the lifetime as the file handler.
+
+Here is the memory footprint recorded using `valgrind --tool=massif`:
+
+```
+    KB
+10.48^                                                                  :     
+     |#: :    : ::::::::: : :  @    :    :: :: ::@@ ::::   ::   :::  :  :@  ::
+     |#  :: :::@: :: :: : : :  @:: ::    : ::  ::@  : : :  ::   :::  :: :@  ::
+     |# ::::: :@: :: :: :::::::@: ::::::@: ::  ::@ :: : :@@::@  :::: ::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@:::::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+     |# ::::: :@: :: :: :::::::@: :::: :@: :: :::@ :: : :@ ::@: :::::::::@::::
+   0 +----------------------------------------------------------------------->Gi
+     0                                                                   1.344
 ```
 
 ## Writer formatting

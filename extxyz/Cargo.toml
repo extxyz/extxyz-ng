@@ -30,14 +30,10 @@ harness = false
 name = "read_frame_rs_vs_c"
 harness = false
 
-[[bin]]
-name = "read_frame"
-path = "bin/read_frame.rs"
-
 [features]
 legacy = ["extxyz-sys"]
 
-[[bin]]
+[[example]]
 name = "read_frame_legacy_c"
-path = "bin/read_frame_legacy_c.rs"
-
+path = "examples/read_frame_legacy_c.rs"
+required-features = ["legacy"]
