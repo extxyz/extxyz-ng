@@ -1,7 +1,18 @@
-use crate::{ExtxyzError, Result};
+use crate::{error::ExtxyzError, Result};
 use std::io::Write;
 
 use extxyz_types::{escape, Frame, Value};
+
+pub fn write_frames<W, I>(w: &mut W, frames: I) -> Result<()>
+where
+    W: Write,
+    I: IntoIterator<Item = Frame>,
+{
+    for frame in frames {
+        write_frame(w, &frame)?;
+    }
+    Ok(())
+}
 
 // // deprecated, this is the old style in representing lattice as flatten vecs
 // fn write_lattice<T, W>(w: &mut W, m: &[Vec<T>]) -> Result<()>
@@ -293,6 +304,41 @@ C         -7.28250        4.71303       -3.82016
 
         let s = String::from_utf8(buf).unwrap();
         let expect = r#"4
+key1=a key2=a/b key3=a@b key4=a@b Properties=species:S:1:pos:R:3
+Mg         -4.25650000       3.79180000      -2.54123000
+C          -1.15405000       2.86652000      -1.26699000
+C          -5.53758000       3.70936000       0.63504000
+C          -7.28250000       4.71303000      -3.82016000
+"#;
+        assert_eq!(s, expect);
+    }
+
+    #[test]
+    fn test_write_frames_default() {
+        let inp = r#"4
+key1=a key2=a/b key3=a@b key4="a@b" 
+Mg        -4.25650        3.79180       -2.54123
+C         -1.15405        2.86652       -1.26699
+C         -5.53758        3.70936        0.63504
+C         -7.28250        4.71303       -3.82016
+"#;
+        let rd = Cursor::new(inp.as_bytes());
+        let frame1 = read_frame(&mut rd.clone()).unwrap();
+        let frame2 = read_frame(&mut rd.clone()).unwrap();
+        let frames = vec![frame1, frame2];
+        let mut buf = Vec::new();
+        {
+            let mut w = BufWriter::new(&mut buf);
+            write_frames(&mut w, frames).unwrap();
+        }
+        let s = String::from_utf8(buf).unwrap();
+        let expect = r#"4
+key1=a key2=a/b key3=a@b key4=a@b Properties=species:S:1:pos:R:3
+Mg         -4.25650000       3.79180000      -2.54123000
+C          -1.15405000       2.86652000      -1.26699000
+C          -5.53758000       3.70936000       0.63504000
+C          -7.28250000       4.71303000      -3.82016000
+4
 key1=a key2=a/b key3=a@b key4=a@b Properties=species:S:1:pos:R:3
 Mg         -4.25650000       3.79180000      -2.54123000
 C          -1.15405000       2.86652000      -1.26699000

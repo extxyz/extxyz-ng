@@ -1,5 +1,6 @@
 /* native read parsed using `nom`
 */
+use crate::error::ExtxyzError;
 use extxyz_types::{DictHandler, FloatNum, Frame, Text, Value};
 use nom::{
     self,
@@ -20,6 +21,56 @@ use std::{
     collections::BTreeMap,
     io::{self, BufRead},
 };
+
+/// read from a buf reader and return an `FrameReader` which is an interator.
+pub fn read_frames<'a, R>(rd: &'a mut R) -> FrameReader<'a, R>
+where
+    R: BufRead,
+{
+    FrameReader {
+        rd,
+        finished: false,
+    }
+}
+
+pub struct FrameReader<'a, R> {
+    // None as done marker
+    rd: &'a mut R,
+    finished: bool,
+}
+
+impl<'a, R> Iterator for FrameReader<'a, R>
+where
+    R: BufRead,
+{
+    type Item = Result<Frame, ExtxyzError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // fast finished
+        if self.finished {
+            return None;
+        }
+
+        match _read_frame_native(self.rd, None) {
+            Ok(Some(frame)) => Some(Ok(frame)),
+            Ok(None) => None,
+            Err(err) => Some(Err(ExtxyzError::Io(err))),
+        }
+    }
+}
+
+pub fn read_frame<R>(rd: &mut R) -> Result<Frame, ExtxyzError>
+where
+    R: BufRead,
+{
+    let Some(frame) = _read_frame_native(rd, None)? else {
+        return Err(ExtxyzError::Io(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "does not parse anything from reader",
+        )));
+    };
+    Ok(frame)
+}
 
 pub(crate) fn _read_frame_native<R>(
     rd: &mut R,
@@ -87,7 +138,13 @@ where
         buf.push_str(&line);
     }
 
-    parse_frame(buf.as_bytes())
+    let input = buf.as_bytes();
+    // parse natoms
+    // let (input, natoms) = parse_natoms_line
+    //     .parse(input)
+    //     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+
+    parse_frame(input)
         .map(|(_remaining, mut frame)| {
             if let Some(comment) = comment_override {
                 frame.set_comment(comment);
@@ -599,25 +656,15 @@ fn parse_properties<'a>(inp: &'a [u8]) -> IResult<&'a [u8], PropShape<'a>> {
     Ok((inp_, mp))
 }
 
-fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
-    // dbg!(str::from_utf8(input).unwrap());
-    let (input, _) = streaming::multispace0(input)?;
-    // dbg!(str::from_utf8(input).unwrap());
-    let (input, natoms) = map_res(streaming::digit1, |digits: &[u8]| {
-        let s = std::str::from_utf8(digits).expect("digit1 expect ASCII");
-        s.parse::<usize>()
-    })
-    .parse(input)?;
-    let (input, _) = streaming::multispace0(input)?;
-    // let (input, _) = streaming::newline(input)?;
+type TypInfo = Vec<(String, Value)>;
+type TypPropShape<'a> = Vec<(&'a str, Ty, u8)>;
 
-    let (mut input, line) = terminated(
+fn parse_info<'a>(input: &'a [u8]) -> IResult<&'a [u8], (TypInfo, TypPropShape<'a>)> {
+    let (input, line) = terminated(
         nom::bytes::streaming::take_until(&b"\n"[..]),
         streaming::newline,
     )
     .parse(input)?;
-
-    // dbg!(str::from_utf8(line).unwrap());
 
     let (_, info_kv) = alt((
         all_consuming(parse_info_line),
@@ -687,11 +734,14 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
         info.push(("Lattice".to_string(), latt));
     }
     info.push(("Properties".to_string(), prop_shape_value));
-    // dbg!(&info);
+    Ok((input, (info, prop_shape)))
+}
 
-    // TODO: validate natoms and number of rows of the arr
+fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
+    let (input, natoms) = parse_natoms.parse(input)?;
+    let (input, (info, prop_shape)) = parse_info(input)?;
 
-    // create the data container first based on the shape
+    // init the arrs from the shape, in order to avoid innermiddle allocation
     let mut arrs: Vec<(String, Value)> = prop_shape
         .iter()
         .map(|(name, ty, n)| {
@@ -719,6 +769,41 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
         })
         .collect();
 
+    let (input, _) = parse_xyz_line_by_line(input, natoms, &prop_shape, &mut arrs)?;
+
+    let frame = Frame {
+        natoms: natoms as u32,
+        info: DictHandler(info),
+        arrs: DictHandler(arrs),
+    };
+
+    // any remain spaces
+    let (input, _) = multispace0(input)?;
+    debug_assert!(input.is_empty());
+
+    Ok((input, frame))
+}
+
+fn parse_natoms(input: &[u8]) -> IResult<&[u8], usize> {
+    let (input, _) = streaming::multispace0(input)?;
+    let (input, natoms) = map_res(streaming::digit1, |digits: &[u8]| {
+        let s = std::str::from_utf8(digits).expect("digit1 expect ASCII");
+        s.parse::<usize>()
+    })
+    .parse(input)?;
+    let (input, _) = streaming::multispace0(input)?;
+    Ok((input, natoms))
+}
+
+fn parse_xyz_line_by_line<'a>(
+    mut input: &'a [u8],
+    natoms: usize,
+    prop_shape: &Vec<(&'a str, Ty, u8)>,
+    arrs: &mut [(String, Value)],
+) -> IResult<&'a [u8], ()> {
+    // TODO: validate natoms and number of rows of the arr
+
+    // create the data container first based on the shape
     for _i in 0..natoms {
         let (rest, line) = terminated(
             nom::bytes::streaming::take_until(&b"\n"[..]),
@@ -830,20 +915,13 @@ fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
         input = rest;
     }
 
-    let frame = Frame {
-        natoms: natoms as u32,
-        info: DictHandler(info),
-        arrs: DictHandler(arrs),
-    };
-
-    let (input, _) = multispace0(input)?;
-    debug_assert!(input.is_empty());
-
-    Ok((input, frame))
+    Ok((input, ()))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
     use extxyz_types::{Boolean, Integer};
 
     use crate::write_frame;
@@ -1149,5 +1227,29 @@ Si          2.50000000       2.50000000       2.50000000
 O           1.25000000       1.25000000       1.25000000
 "#;
         assert_eq!(format!("{frame}"), expect);
+    }
+
+    #[test]
+    fn test_read_frames_default() {
+        let inp = r#"4
+key1=a key2=a/b key3=a@b key4="a@b"
+Mg        -4.25650        3.79180       -2.54123
+C         -1.15405        2.86652       -1.26699
+C         -5.53758        3.70936        0.63504
+C         -7.28250        4.71303       -3.82016
+4
+key1=a key2=a/b key3=a@b key4="a@b"
+Mg        -4.25650        3.79180       -2.54123
+C         -1.15405        2.86652       -1.26699
+C         -5.53758        3.70936        0.63504
+C         -7.28250        4.71303       -3.82016
+"#;
+        let mut rd = Cursor::new(inp.as_bytes());
+        let mut frames = vec![];
+        for frame in read_frames(&mut rd) {
+            frames.push(frame);
+        }
+
+        assert_eq!(frames.len(), 2);
     }
 }
