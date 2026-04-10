@@ -31,7 +31,7 @@ You should use `extxyz/extxyz-ng` if you want
 
 ## Performance benchmark
 
-Compare with the legacy c implementation in `libAtoms/extxyz`, the rust implementation is nearly twice faster.
+Compare with the legacy c implementation in `libAtoms/extxyz`, the rust implementation is nearly 4 times faster.
 The benchmark is done in parsing a > 20k atoms structure.
 
 ![Bench v.s. legacy libAtoms](./extxyz/benches/result-vs-legacy-c.png)
