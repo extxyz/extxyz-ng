@@ -8,7 +8,7 @@ use nom::{
     bytes::complete::{tag, take_while1},
     character::{
         self,
-        complete::{multispace0, space0, space1},
+        complete::{self, multispace0, space0, space1},
         streaming,
     },
     combinator::{all_consuming, map, map_res, opt, recognize, verify},
@@ -51,7 +51,7 @@ where
             return None;
         }
 
-        match _read_frame_native(self.rd, None) {
+        match _read_frame_native_new(self.rd, None) {
             Ok(Some(frame)) => Some(Ok(frame)),
             Ok(None) => None,
             Err(err) => Some(Err(ExtxyzError::Io(err))),
@@ -63,7 +63,7 @@ pub fn read_frame<R>(rd: &mut R) -> Result<Frame, ExtxyzError>
 where
     R: BufRead,
 {
-    let Some(frame) = _read_frame_native(rd, None)? else {
+    let Some(frame) = _read_frame_native_new(rd, None)? else {
         return Err(ExtxyzError::Io(io::Error::new(
             io::ErrorKind::UnexpectedEof,
             "does not parse anything from reader",
@@ -72,13 +72,100 @@ where
     Ok(frame)
 }
 
-pub(crate) fn _read_frame_native<R>(
+pub(crate) fn _read_frame_native_new<R>(
     rd: &mut R,
     comment_override: Option<&str>,
 ) -> io::Result<Option<Frame>>
+// XXX: still IResult if it is better
 where
     R: BufRead,
 {
+    let mut maybe_natoms_line = String::new();
+    rd.read_line(&mut maybe_natoms_line)?;
+    if maybe_natoms_line.is_empty() {
+        // XXX: is this return None correct?
+        return Ok(None);
+    }
+
+    // parse number of lines
+    let natoms_line_as_bytes = maybe_natoms_line.as_bytes();
+    let (_, natoms) = parse_natoms(natoms_line_as_bytes)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+
+    let mut maybe_info_line = String::new();
+    rd.read_line(&mut maybe_info_line)?;
+    if maybe_info_line.is_empty() {
+        // XXX: is this return None correct?
+        return Ok(None);
+    }
+
+    let info_line_as_bytes = maybe_info_line.as_bytes();
+    let (_, (info, prop_shape)) = parse_info(info_line_as_bytes)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+
+    // init the arrs from the shape, in order to avoid innermiddle allocation
+    let mut arrs: Vec<(String, Value)> = prop_shape
+        .iter()
+        .map(|(name, ty, n)| {
+            let value = match (ty, n) {
+                (Ty::I, 1) => Value::VecInteger(Vec::with_capacity(natoms), natoms as u32),
+                (Ty::R, 1) => Value::VecFloat(Vec::with_capacity(natoms), natoms as u32),
+                (Ty::L, 1) => Value::VecBool(Vec::with_capacity(natoms), natoms as u32),
+                (Ty::S, 1) => Value::VecText(Vec::with_capacity(natoms), natoms as u32),
+
+                (Ty::I, nc) => {
+                    Value::MatrixInteger(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
+                }
+                (Ty::R, nc) => {
+                    Value::MatrixFloat(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
+                }
+                (Ty::L, nc) => {
+                    Value::MatrixBool(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
+                }
+                (Ty::S, nc) => {
+                    Value::MatrixText(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
+                }
+            };
+
+            (name.to_string(), value)
+        })
+        .collect();
+
+    let mut buf = String::new();
+    let mut line = String::new();
+    for _ in 0..natoms {
+        line.clear();
+        let nbytes = rd.read_line(&mut line)?;
+        if nbytes == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "EOF reached before reading full frame",
+            ));
+        }
+        buf.push_str(&line);
+    }
+
+    let input = buf.as_bytes();
+
+    let (input, _) = parse_xyz_line_by_line(input, natoms, &prop_shape, &mut arrs)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+
+    let mut frame = Frame {
+        natoms: natoms as u32,
+        info: DictHandler(info),
+        arrs: DictHandler(arrs),
+    };
+
+    // any remain spaces
+    let (input, _) = multispace0::<_, nom::error::Error<&[u8]>>(input)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+
+    debug_assert!(input.is_empty());
+
+    if let Some(comment) = comment_override {
+        frame.set_comment(comment);
+    }
+
     // loop {
     //     let buf = rd.fill_buf()?;
     //     if buf.is_empty() {
@@ -107,54 +194,12 @@ where
     //         Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string())),
     //     }
     // }
-    let mut first_line = String::new();
 
-    // read first line → number of lines in this frame
-    rd.read_line(&mut first_line)?;
-    if first_line.is_empty() {
-        return Ok(None);
-    }
-
-    // parse number of lines
-    let num_lines: usize = first_line
-        .trim()
-        .parse()
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
-    // read exactly num_lines lines into a buffer
-    let mut buf = String::new();
-    buf.push_str(&first_line);
-
-    let mut line = String::new();
-    for _ in 0..=num_lines {
-        line.clear();
-        let nbytes = rd.read_line(&mut line)?;
-        if nbytes == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "EOF reached before reading full frame",
-            ));
-        }
-        buf.push_str(&line);
-    }
-
-    let input = buf.as_bytes();
-    // parse natoms
-    // let (input, natoms) = parse_natoms_line
-    //     .parse(input)
-    //     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-
-    parse_frame(input)
-        .map(|(_remaining, mut frame)| {
-            if let Some(comment) = comment_override {
-                frame.set_comment(comment);
-            }
-            Some(frame)
-        })
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+    Ok(Some(frame))
 }
 
-// XXX: can I lru cache this call?
+// XXX: can I lru cache this call? this can be useful when parsing frames because the same info
+// lines will be kept on parsed again and again.
 fn key_value(inp: &[u8]) -> IResult<&[u8], (&[u8], &[u8])> {
     let (inp, (k, v)) = separated_pair(
         delimited(
@@ -661,8 +706,8 @@ type TypPropShape<'a> = Vec<(&'a str, Ty, u8)>;
 
 fn parse_info<'a>(input: &'a [u8]) -> IResult<&'a [u8], (TypInfo, TypPropShape<'a>)> {
     let (input, line) = terminated(
-        nom::bytes::streaming::take_until(&b"\n"[..]),
-        streaming::newline,
+        nom::bytes::complete::take_until(&b"\n"[..]),
+        complete::newline,
     )
     .parse(input)?;
 
@@ -737,61 +782,14 @@ fn parse_info<'a>(input: &'a [u8]) -> IResult<&'a [u8], (TypInfo, TypPropShape<'
     Ok((input, (info, prop_shape)))
 }
 
-fn parse_frame(input: &[u8]) -> IResult<&[u8], Frame> {
-    let (input, natoms) = parse_natoms.parse(input)?;
-    let (input, (info, prop_shape)) = parse_info(input)?;
-
-    // init the arrs from the shape, in order to avoid innermiddle allocation
-    let mut arrs: Vec<(String, Value)> = prop_shape
-        .iter()
-        .map(|(name, ty, n)| {
-            let value = match (ty, n) {
-                (Ty::I, 1) => Value::VecInteger(Vec::with_capacity(natoms), natoms as u32),
-                (Ty::R, 1) => Value::VecFloat(Vec::with_capacity(natoms), natoms as u32),
-                (Ty::L, 1) => Value::VecBool(Vec::with_capacity(natoms), natoms as u32),
-                (Ty::S, 1) => Value::VecText(Vec::with_capacity(natoms), natoms as u32),
-
-                (Ty::I, nc) => {
-                    Value::MatrixInteger(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
-                }
-                (Ty::R, nc) => {
-                    Value::MatrixFloat(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
-                }
-                (Ty::L, nc) => {
-                    Value::MatrixBool(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
-                }
-                (Ty::S, nc) => {
-                    Value::MatrixText(Vec::with_capacity(natoms), (natoms as u32, *nc as u32))
-                }
-            };
-
-            (name.to_string(), value)
-        })
-        .collect();
-
-    let (input, _) = parse_xyz_line_by_line(input, natoms, &prop_shape, &mut arrs)?;
-
-    let frame = Frame {
-        natoms: natoms as u32,
-        info: DictHandler(info),
-        arrs: DictHandler(arrs),
-    };
-
-    // any remain spaces
-    let (input, _) = multispace0(input)?;
-    debug_assert!(input.is_empty());
-
-    Ok((input, frame))
-}
-
 fn parse_natoms(input: &[u8]) -> IResult<&[u8], usize> {
-    let (input, _) = streaming::multispace0(input)?;
-    let (input, natoms) = map_res(streaming::digit1, |digits: &[u8]| {
+    let (input, _) = complete::multispace0(input)?;
+    let (input, natoms) = map_res(complete::digit1, |digits: &[u8]| {
         let s = std::str::from_utf8(digits).expect("digit1 expect ASCII");
         s.parse::<usize>()
     })
     .parse(input)?;
-    let (input, _) = streaming::multispace0(input)?;
+    let (input, _) = complete::multispace0(input)?;
     Ok((input, natoms))
 }
 
@@ -1143,15 +1141,14 @@ mod tests {
 
     #[test]
     fn test_parse_frame_default() {
-        let inp = &br#"2
+        let inp = r#"2
 Properties=species:S:1:pos:R:3 key1=aa key2=87 key3=thisisaverylongstring ZZPnonsense=65.9
 Mn 0.0 0.5 0.5
 C 0.0 0.5 0.3
-"#[..];
+"#;
 
-        let (_, frame) = parse_frame(inp)
-            .map_err(|err| err.map_input(|inp| str::from_utf8(inp).unwrap()))
-            .unwrap();
+        let mut rd = Cursor::new(inp.as_bytes());
+        let frame = read_frame(&mut rd).unwrap();
         let frame = TFrame(frame);
 
         let expect = r#"2
@@ -1164,15 +1161,14 @@ C           0.00000000       0.50000000       0.30000000
 
     #[test]
     fn test_parse_frame_without_properties() {
-        let inp = &br#"2
+        let inp = r#"2
 key1=aa key2=87 key3=thisisaverylongstring ZZPnonsense=65.9
 Mn 0.0 0.5 0.5
 C 0.0 0.5 0.3
-"#[..];
+"#;
 
-        let (_, frame) = parse_frame(inp)
-            .map_err(|err| err.map_input(|inp| str::from_utf8(inp).unwrap()))
-            .unwrap();
+        let mut rd = Cursor::new(inp.as_bytes());
+        let frame = read_frame(&mut rd).unwrap();
         let frame = TFrame(frame);
 
         let expect = r#"2
@@ -1185,16 +1181,15 @@ C           0.00000000       0.50000000       0.30000000
 
     #[test]
     fn test_parse_lattice_from_flatten() {
-        let inp = &br#"3
+        let inp = r#"3
 Lattice="5.0 1.0 0.0 0.0 5.0 2.0 1.0 0.4 5.0" Properties=species:S:1:pos:R:3
 Si    0.0    0.0    0.0
 Si    2.5    2.5    2.5
 O     1.25   1.25   1.25
-"#[..];
+"#;
 
-        let (_, frame) = parse_frame(inp)
-            .map_err(|err| err.map_input(|inp| str::from_utf8(inp).unwrap()))
-            .unwrap();
+        let mut rd = Cursor::new(inp.as_bytes());
+        let frame = read_frame(&mut rd).unwrap();
         let frame = TFrame(frame);
 
         let expect = r#"3
@@ -1208,16 +1203,15 @@ O           1.25000000       1.25000000       1.25000000
 
     #[test]
     fn test_no_equal_sign_line() {
-        let inp = &br#"3
+        let inp = r#"3
 full line that has no equal will be a comment line
 Si    0.0    0.0    0.0
 Si    2.5    2.5    2.5
 O     1.25   1.25   1.25
-"#[..];
+"#;
 
-        let (_, frame) = parse_frame(inp)
-            .map_err(|err| err.map_input(|inp| str::from_utf8(inp).unwrap()))
-            .unwrap();
+        let mut rd = Cursor::new(inp.as_bytes());
+        let frame = read_frame(&mut rd).unwrap();
         let frame = TFrame(frame);
 
         let expect = r#"3
