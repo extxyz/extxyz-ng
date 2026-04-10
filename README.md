@@ -90,6 +90,38 @@ Here is the memory footprint recorded using `valgrind --tool=massif`:
      0                                                                   1.344
 ```
 
+### low memory footprint when read large frame (20,000 lines)
+
+The file itself is ~ 758 kb, use buffer read, the file won't be loaded as a whole.
+The memory usage is all from the final constructed structure result.
+The total memory usage (2.53mb) is half of libAtoms's c implementation (parsing same file requires 4.74 mb)
+
+```
+    MB
+2.528^                                                                      # 
+     |                                                                @@@@:@# 
+     |                                                          @@@:@@@@@@:@#:
+     |                                                     :::::@@@:@@@@@@:@#:
+     |                                              ::::::::::: @@@:@@@@@@:@#:
+     |                                       ::::::::::::: :::: @@@:@@@@@@:@#:
+     |                                  ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     |                            ::::::::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     |                     @@@@:::: ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     |              ::@@@@@@@ @:: : ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     |        ::::@:::@ @@ @@ @:: : ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     |   ::@:@::: @:::@ @@ @@ @:: : ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     | ::: @:@::: @:::@ @@ @@ @:: : ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     | ::: @:@::: @:::@ @@ @@ @:: : ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     | ::: @:@::: @:::@ @@ @@ @:: : ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     | ::: @:@::: @:::@ @@ @@ @:: : ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     | ::: @:@::: @:::@ @@ @@ @:: : ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     | ::: @:@::: @:::@ @@ @@ @:: : ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     | ::: @:@::: @:::@ @@ @@ @:: : ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+     | ::: @:@::: @:::@ @@ @@ @:: : ::: ::@@:::::::::::::: :::: @@@:@@@@@@:@#:
+   0 +----------------------------------------------------------------------->Mi
+     0                                                                   96.84
+```
+
 ## Writer formatting
 
 - keys and values in the info line keeps its original format
@@ -161,7 +193,7 @@ cd extxyz-rs
 - [ ] Julia binding
 - [ ] Python binding
 - [x] benchmark on speed when parsing large files.
-- [ ] read multiple frames.
+- [x] read multiple frames.
 - [x] benchmark the memory usage when parsing
 - [x] ~~Fortran binding (not planned)~~
 - [ ] ccmat integration through features tag
