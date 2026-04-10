@@ -103,7 +103,7 @@ unsafe fn c_to_rust_dict(mut ptr: *mut bindings::dict_entry_struct) -> Vec<(Stri
                         matrix.push(vec);
                     }
                     Value::MatrixInteger(
-                        matrix,
+                        Box::new(matrix),
                         (
                             u32::try_from(nrows).expect("nrows out of u32 bound"),
                             u32::try_from(ncols).expect("ncols out of u32 bound"),
@@ -134,7 +134,7 @@ unsafe fn c_to_rust_dict(mut ptr: *mut bindings::dict_entry_struct) -> Vec<(Stri
                         matrix.push(vec);
                     }
                     Value::MatrixFloat(
-                        matrix,
+                        Box::new(matrix),
                         (
                             u32::try_from(nrows).expect("nrows out of u32 bound"),
                             u32::try_from(ncols).expect("ncols out of u32 bound"),
@@ -165,7 +165,7 @@ unsafe fn c_to_rust_dict(mut ptr: *mut bindings::dict_entry_struct) -> Vec<(Stri
                         matrix.push(vec);
                     }
                     Value::MatrixBool(
-                        matrix,
+                        Box::new(matrix),
                         (
                             u32::try_from(nrows).expect("nrows out of u32 bound"),
                             u32::try_from(ncols).expect("ncols out of u32 bound"),
@@ -189,7 +189,10 @@ unsafe fn c_to_rust_dict(mut ptr: *mut bindings::dict_entry_struct) -> Vec<(Stri
                             Text::from(s)
                         })
                         .collect::<Vec<Text>>();
-                    Value::VecText(vec, u32::try_from(ncols).expect("ncols out of u32 bound"))
+                    Value::VecText(
+                        Box::new(vec),
+                        u32::try_from(ncols).expect("ncols out of u32 bound"),
+                    )
                 } else {
                     let mut matrix = Vec::with_capacity(nrows);
                     for r in 0..nrows {
@@ -204,7 +207,7 @@ unsafe fn c_to_rust_dict(mut ptr: *mut bindings::dict_entry_struct) -> Vec<(Stri
                         matrix.push(vecint);
                     }
                     Value::MatrixText(
-                        matrix,
+                        Box::new(matrix),
                         (
                             u32::try_from(nrows).expect("nrows out of u32 bound"),
                             u32::try_from(ncols).expect("ncols out of u32 bound"),

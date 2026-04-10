@@ -199,11 +199,11 @@ pub enum Value {
     VecInteger(Vec<Integer>, u32),
     VecFloat(Vec<FloatNum>, u32),
     VecBool(Vec<Boolean>, u32),
-    VecText(Vec<Text>, u32),
-    MatrixInteger(Vec<Vec<Integer>>, (u32, u32)),
-    MatrixFloat(Vec<Vec<FloatNum>>, (u32, u32)),
-    MatrixBool(Vec<Vec<Boolean>>, (u32, u32)),
-    MatrixText(Vec<Vec<Text>>, (u32, u32)),
+    VecText(Box<Vec<Text>>, u32),
+    MatrixInteger(Box<Vec<Vec<Integer>>>, (u32, u32)),
+    MatrixFloat(Box<Vec<Vec<FloatNum>>>, (u32, u32)),
+    MatrixBool(Box<Vec<Vec<Boolean>>>, (u32, u32)),
+    MatrixText(Box<Vec<Vec<Text>>>, (u32, u32)),
     #[default]
     Unsupported,
 }
