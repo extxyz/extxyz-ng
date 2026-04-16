@@ -2,14 +2,70 @@
 
 Extended XYZ specification and parsers.
 
-Implemented in rust, with python binding provided 
+Implemented in rust, with python binding.
 
-⚠️ Project status: This repository is still under active development.
-Basic read and write functionality is implemented, but the API and features are not yet finalized or fully polished.
+> ⚠️ **Project status:** This repository is under active development.  
 
-Benchmarking is a key upcoming focus, particularly on large-scale structures, to ensure performance and robustness.
+Benchmarking is a central focus, especially for large-scale trajectories. 
+Frames are processed in a streaming fashion using buffered I/O, enabling a minimal memory footprint.
 
-See below the roadmap section for the planned steps toward the first stable release.
+Compare to legacy c implementation, this approach achieves up to 4× faster performance while reducing memory usage to half for large files. See [benchmark](#performance-benchmark).
+
+## Usage
+
+This crate provides a low-level parser for the format, designed to be easily converted into structured data compatible with the [ccmat](https://github.com/ccmat-lab/ccmat)
+ library.
+
+For high-level tasks such as analyzing crystal or molecular structures, we recommend using `ccmat` directly, which offers both Rust and Python APIs.
+
+### Rust
+
+To use this in your rust project, run `cargo add extxyz-ng` or add it to your `Cargo.toml`:
+
+```toml
+[dependencies]
+extxyz = { package = "extxyz-ng", version = "0" }
+```
+
+To read a structure frame from file, 
+
+```rust
+use std::fs;
+use extxyz::read_frame;
+
+fn main() {
+    let path = "./structure.xyz";
+    let file = fs::File::open(path).unwrap();
+    let mut rd = std::io::BufReader::new(file);
+
+    let frame = read_frame(&mut rd).unwrap();
+    println!(frame.natoms);
+    println!(frame.info);
+    println!(frame.arrs);
+}
+```
+
+Or to read frames from for example LAMMPS trajactories outputs,
+
+```rust
+use std::fs;
+use extxyz::read_frames;
+
+fn main() {
+    let path = "./trajactories.xyz";
+    let file = fs::File::open(path).expect("Failed to read file");
+    let mut rd = std::io::BufReader::new(file);
+
+    let frames = read_frames(&mut rd);
+    for frame in frames {
+        println!(frame.natoms);
+        println!(frame.info);
+        println!(frame.arrs);
+    }
+}
+```
+
+### Python
 
 ## Why/when you should/shouldnt use old c implementation aka `libAtoms/extxyz`
 
