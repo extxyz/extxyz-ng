@@ -1,4 +1,4 @@
-# extxyz-ng
+# extxyz
 
 Extended XYZ specification and parsers.
 
@@ -15,10 +15,10 @@ See below the roadmap section for the planned steps toward the first stable rele
 
 You should use [`libAtoms/extxyz`](https://github.com/libAtoms/extxyz) if you want
 
-- use julia binding (but we can add it to extxyz-ng, no time work on it at the moment).
+- use julia binding (but we can add it to extxyz, no time work on it at the moment).
 - use fortran binding.
 
-You should use `extxyz/extxyz-ng` if you want
+You should use `extxyz/extxyz` if you want
 
 - robust parsing that won't end up at segmentfault when your input is slightly misalign (e.g. leading spaces)
 - nice error showing you where exactly the input is not able to be parsed.
@@ -49,12 +49,12 @@ valgrind --leak-check=full ./target/release/read_frame_legacy_c
 
 ==1485786== 215,052 (24 direct, 215,028 indirect) bytes in 1 blocks are definitely lost in loss record 203 of 203
 ==1485786==    at 0x48AB7A8: malloc (vg_replace_malloc.c:446)
-==1485786==    by 0x401D458: cleri_grammar (in /home/jyu/rust/extxyz-ng/target/release/read_frame_legacy_c)
-==1485786==    by 0x4017DDB: read_frame_legacy_c::main (in /home/jyu/rust/extxyz-ng/target/release/read_frame_legacy_c)
-==1485786==    by 0x4018F02: std::sys::backtrace::__rust_begin_short_backtrace (in /home/jyu/rust/extxyz-ng/target/release/read_frame_legacy_c)
-==1485786==    by 0x4018EF8: std::rt::lang_start::{{closure}} (in /home/jyu/rust/extxyz-ng/target/release/read_frame_legacy_c)
-==1485786==    by 0x402BCA5: std::rt::lang_start_internal (in /home/jyu/rust/extxyz-ng/target/release/read_frame_legacy_c)
-==1485786==    by 0x4018EE4: main (in /home/jyu/rust/extxyz-ng/target/release/read_frame_legacy_c)
+==1485786==    by 0x401D458: cleri_grammar (in /home/jyu/rust/extxyz/target/release/read_frame_legacy_c)
+==1485786==    by 0x4017DDB: read_frame_legacy_c::main (in /home/jyu/rust/extxyz/target/release/read_frame_legacy_c)
+==1485786==    by 0x4018F02: std::sys::backtrace::__rust_begin_short_backtrace (in /home/jyu/rust/extxyz/target/release/read_frame_legacy_c)
+==1485786==    by 0x4018EF8: std::rt::lang_start::{{closure}} (in /home/jyu/rust/extxyz/target/release/read_frame_legacy_c)
+==1485786==    by 0x402BCA5: std::rt::lang_start_internal (in /home/jyu/rust/extxyz/target/release/read_frame_legacy_c)
+==1485786==    by 0x4018EE4: main (in /home/jyu/rust/extxyz/target/release/read_frame_legacy_c)
 ```
 
 ### low memory footprint when read frames
@@ -131,7 +131,7 @@ The total memory usage (2.53mb) is half of libAtoms's c implementation (parsing 
 To fully backward compatible with legacy `libAtoms/extxyz` which used in the community for long time.
 I run following round-trip tests to ensure the behavior align with old specification.
 
-- `.xyz` --`extxyz-ng`/read --> inner --`extxyz-ng`/write--> `.xyz`-01 --`cextxyz`/read--> inner --> `.xyz`-02
+- `.xyz` --`extxyz`/read --> inner --`extxyz`/write--> `.xyz`-01 --`cextxyz`/read--> inner --> `.xyz`-02
 - test xyz-01 exatly the same as xyz-02 in content.
 
 ## TODO: some ambiguse inputs that need to recheck for legacy and new parser
@@ -184,8 +184,8 @@ The output format is constrained with following rule, in order that the output f
 Clone `libAtoms/extxyz` source code (and its submodule `libcleri` for language parsing) as submodules
 
 ```console
-git clone --recurse-submodules https://github.com/extxyz/extxyz-rs.git
-cd extxyz-rs
+git clone --recurse-submodules https://github.com/extxyz/extxyz.git
+cd extxyz
 ```
 
 ## Roadmap

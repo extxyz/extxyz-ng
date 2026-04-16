@@ -5,7 +5,7 @@ name = "pyextxyz"
 version = "0.1.0"
 edition = "2021"
 authors = ["Jusong Yu <jusong.yu@pm.me>"]
-homepage = "https://github.com/extxyz/extxyz-ng"
+homepage = "https://github.com/extxyz/extxyz"
 
 [lib]
 name = "pyextxyz"

@@ -1,4 +1,4 @@
-# extxyz-rs
+# extxyz
 
 Unsafe automatically-generated Rust bindings for libAtoms/extxyz parser
 

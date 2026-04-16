@@ -2,7 +2,7 @@
 name = "extxyz-types"
 description = "types for extxyz-sys and extxyz"
 authors = ["Jusong Yu <jusong.yu@pm.me>"]
-repository = "https://github.com/extxyz/extxyz-rs"
+repository = "https://github.com/extxyz/extxyz"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["physics", "chemistry"]
