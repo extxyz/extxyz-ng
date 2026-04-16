@@ -181,12 +181,35 @@ The output format is constrained with following rule, in order that the output f
 
 ## dev
 
-Clone `libAtoms/extxyz` source code (and its submodule `libcleri` for language parsing) as submodules
+Since all functionality is adapt to rust implementation, the legacy c code is only for test and benchmark purpose and will be removed in the end when this rust implementation get widely used.
+
+To test with legacy C implementation binding, clone the `libAtoms/extxyz` source code (and its submodule `libcleri` for language parsing) as a submodule.
 
 ```console
 git clone --recurse-submodules https://github.com/extxyz/extxyz.git
 cd extxyz
 ```
+
+### Make new Release
+
+For pypi release:
+- update version number at `python/Cargo.toml`. The version don't need to sync with rust crate version.
+- trigger manually at CI workflow [`pypi-publish`](https://github.com/extxyz/extxyz/actions/workflows/pypi-publish.yaml)
+
+For binary release and for crates.io release, they share same version number.
+
+```console
+# commit and push to main (can be done with a PR)
+git commit -am "release: version 0.1.0"
+git push
+
+# actually push the tag up (this triggers dist's CI)
+git tag v0.1.0
+git push --tags
+```
+
+CI workflow of crates.io build can be trigger manually at CI workflow [`crate-publish`](https://github.com/EOSC-Data-Commons/datahugger-ng/actions/workflows/crate-publish.yaml).
+But it will not run the final crates.io upload.
 
 ## Roadmap
 
