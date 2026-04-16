@@ -1,6 +1,6 @@
 [package]
-name = "extxyz"
-description = "Safe API for dealing with xyz (and extxyz) format for material structure"
+name = "extxyz-ng"
+description = "extended XYZ parser (extxyz)"
 authors = ["Jusong Yu <jusong.yu@pm.me>"]
 repository = "https://github.com/extxyz/extxyz"
 readme = "README.md"
