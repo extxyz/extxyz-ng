@@ -220,3 +220,11 @@ But it will not run the final crates.io upload.
 - [x] benchmark the memory usage when parsing
 - [x] ~~Fortran binding (not planned)~~
 - [ ] ccmat integration through features tag
+
+## License
+
+All contributions must retain this attribution.
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+

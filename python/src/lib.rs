@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 
-/// A Python module implemented in Rust.
 #[pymodule]
+#[pyo3(name = "extxyz")]
 mod pyextxyz {
     use pyo3::prelude::*;
 
