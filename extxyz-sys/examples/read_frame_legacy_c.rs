@@ -1,5 +1,5 @@
-use std::{fs, io::BufRead};
 use extxyz_types::Frame;
+use std::{fs, io::BufRead};
 
 pub fn read_frame_c_binding<R>(rd: &mut R) -> Frame
 where
