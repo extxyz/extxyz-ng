@@ -26,16 +26,22 @@ pub fn read_frames<'a, R>(rd: &'a mut R) -> FrameReader<'a, R>
 where
     R: BufRead,
 {
-    FrameReader {
-        rd,
-        finished: false,
-    }
+    FrameReader::new(rd)
 }
 
 pub struct FrameReader<'a, R> {
     // None as done marker
     rd: &'a mut R,
     finished: bool,
+}
+
+impl<'a, R> FrameReader<'a, R> {
+    pub fn new(rd: &'a mut R) -> Self {
+        FrameReader {
+            rd,
+            finished: false,
+        }
+    }
 }
 
 impl<'a, R> Iterator for FrameReader<'a, R>
@@ -55,6 +61,38 @@ where
             Ok(None) => None,
             Err(err) => Some(Err(ExtxyzError::Io(err))),
         }
+    }
+}
+
+pub struct FrameReaderOwned<R> {
+    rd: R,
+    finished: bool,
+}
+
+impl<R> FrameReaderOwned<R> {
+    pub fn new(rd: R) -> Self {
+        FrameReaderOwned {
+            rd,
+            finished: false,
+        }
+    }
+}
+
+impl<R> Iterator for FrameReaderOwned<R>
+where
+    R: BufRead,
+{
+    type Item = Result<Frame, ExtxyzError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut rd = FrameReader {
+            rd: &mut self.rd,
+            finished: self.finished,
+        };
+
+        let out = rd.next();
+        self.finished = rd.finished;
+        out
     }
 }
 

@@ -58,20 +58,24 @@ def read_frames_from_file(inp: str | os.PathLike[str], /) -> Iterator[Frame]:
     """
     ...
 
-def write_frame(fh: typing.TextIO, frame: Frame, /) -> None:
+def write_frame(fh: typing.TextIO, frame: Frame, /) -> int:
     """Serialize a frame.
 
     Parameters:
         fh: File handler returned by open
         frame: Frame object to serialize.
+    Return: 
+        number of bytes being write
     """
     ...
 
-def write_frames(fh: typing.TextIO, frames: Iterator[Frame], /) -> None:
+def write_frames(fh: typing.TextIO, frames: Iterator[Frame], /) -> int:
     """Serialize frames to a file handler.
 
     Parameters:
         fh: File handler returned by open
         frames: iterator of Frames
+    Return: 
+        number of bytes being write
     """
     ...
