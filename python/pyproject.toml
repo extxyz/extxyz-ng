@@ -22,18 +22,14 @@ include = ["py.typed", "*.pyi"]
 
 [dependency-groups]
 dev = [
-    "pip", 
-    "pytest>=8.0.2", 
-    "ruff>=0.8.0", 
+    "pip",
+    "pytest>=8.0.2",
+    "ruff>=0.8.0",
     "pre-commit>=4.0.1",
     "ipython",
     "mypy==1.19.1",
     "types-requests",
-]
-
-[project.optional-dependencies]
-tests = [
-    "pytest~=8.3",
+    "ase>=3.28.0",
 ]
 
 [tool.mypy]

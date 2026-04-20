@@ -14,7 +14,7 @@ class Frame:
     def arrs(self) -> dict[str, list[float | int | bool | str]]:
         """Per-atom or per-site tabular data stored as columns."""
 
-def read_frame_from_stream(stream: typing.TextIO) -> Frame:
+def read_frame(stream: typing.TextIO) -> Frame:
     """Read a single frame from a text stream.
 
     Parameters:
@@ -25,7 +25,7 @@ def read_frame_from_stream(stream: typing.TextIO) -> Frame:
     """
     ...
 
-def read_frames_from_stream(stream: typing.TextIO) -> Iterator[Frame]:
+def read_frames(stream: typing.TextIO) -> Iterator[Frame]:
     """Read frames from a text stream.
 
     Parameters:
@@ -36,7 +36,7 @@ def read_frames_from_stream(stream: typing.TextIO) -> Iterator[Frame]:
     """
     ...
 
-def read_frame(inp: str | os.PathLike[str], /) -> Frame:
+def read_frame_from_file(inp: str | os.PathLike[str], /) -> Frame:
     """Read a frame from a file path.
 
     Parameters:
@@ -47,7 +47,7 @@ def read_frame(inp: str | os.PathLike[str], /) -> Frame:
     """
     ...
 
-def read_frames(inp: str | os.PathLike[str], /) -> Iterator[Frame]:
+def read_frames_from_file(inp: str | os.PathLike[str], /) -> Iterator[Frame]:
     """Read frames from a file path.
 
     Parameters:
@@ -58,24 +58,20 @@ def read_frames(inp: str | os.PathLike[str], /) -> Iterator[Frame]:
     """
     ...
 
-def write_frame(frame: Frame, /) -> str | bytes | os.PathLike[str]:
+def write_frame(fh: typing.TextIO, frame: Frame, /) -> None:
     """Serialize a frame.
 
     Parameters:
+        fh: File handler returned by open
         frame: Frame object to serialize.
-
-    Returns:
-        Serialized representation of the frame.
     """
     ...
 
-def write_frames(inp: str | bytes | os.PathLike[str], /) -> Iterator[Frame]:
-    """Read frames from an input source.
+def write_frames(fh: typing.TextIO, frames: Iterator[Frame], /) -> None:
+    """Serialize frames to a file handler.
 
     Parameters:
-        inp: Input file path or data source.
-
-    Yields:
-        Frame objects parsed from the input.
+        fh: File handler returned by open
+        frames: iterator of Frames
     """
     ...

@@ -238,7 +238,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -255,32 +255,12 @@ wheels = [
 ]
 
 [[package]]
-name = "extxyz"
-version = "0.1.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "ase" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "pyleri" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6b/cd/c7ee8e5424312db5b42aefb6fde60272edccf4de6dcd852e9dbe099a8e01/extxyz-0.1.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7651094b83770a842597977202d3c514bf81e959bde626d1e3dfabadf355e3a7", size = 250495, upload-time = "2023-09-20T19:52:38.443Z" },
-    { url = "https://files.pythonhosted.org/packages/ef/15/69c2729cce40defc5725199b3b605c291383fc258776394cd086025b107a/extxyz-0.1.3-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:000db2aedbf463ef5432e8ce8d9c0fd9c956d78c1170044afdaa4f038db787d8", size = 250494, upload-time = "2023-09-20T19:52:39.975Z" },
-]
-
-[[package]]
 name = "extxyz-ng"
 source = { editable = "." }
 
-[package.optional-dependencies]
-tests = [
-    { name = "extxyz" },
-    { name = "pytest" },
-]
-
 [package.dev-dependencies]
 dev = [
+    { name = "ase" },
     { name = "ipython", version = "8.39.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "ipython", version = "9.10.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "ipython", version = "9.12.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -293,14 +273,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "extxyz", marker = "extra == 'tests'", specifier = "==0.1.3" },
-    { name = "pytest", marker = "extra == 'tests'", specifier = "~=8.3" },
-]
-provides-extras = ["tests"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "ase", specifier = ">=3.28.0" },
     { name = "ipython" },
     { name = "mypy", specifier = "==1.19.1" },
     { name = "pip" },
@@ -1217,15 +1193,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/c3/b2/bc9c9196916376152d655522fdcebac55e66de6603a76a02bca1b6414f6c/pygments-2.20.0.tar.gz", hash = "sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f", size = 4955991, upload-time = "2026-03-29T13:29:33.898Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f4/7e/a72dd26f3b0f4f2bf1dd8923c85f7ceb43172af56d63c7383eb62b332364/pygments-2.20.0-py3-none-any.whl", hash = "sha256:81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176", size = 1231151, upload-time = "2026-03-29T13:29:30.038Z" },
-]
-
-[[package]]
-name = "pyleri"
-version = "1.5.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3a/0e/0e384ad4a9a603895f28da0fa32260402e372d26f3333a9ccd09de2bdf96/pyleri-1.5.0.tar.gz", hash = "sha256:0715a433e5b97e3d2fd8f74b4e57871e365eb3a1c7a09fb70d2f78700fd25e4c", size = 37014, upload-time = "2025-11-12T20:20:58.29Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/05/28/5441ed2fc228dc720f24dee43d889a7bd0510e3886a0afe00eb2d71829dc/pyleri-1.5.0-py3-none-any.whl", hash = "sha256:15e35d12e3a65968aae0923072e3637d5b9be76935cf49b2defd9841b220e619", size = 32917, upload-time = "2025-11-15T07:53:36.326Z" },
 ]
 
 [[package]]
