@@ -1,7 +1,7 @@
 /* native read parsed using `nom`
 */
 use crate::error::ExtxyzError;
-use extxyz_types::{DictHandler, FloatNum, Frame, Text, Value};
+use extxyz_types::{FloatNum, Frame, Text, Value};
 use nom::{
     self,
     branch::alt,
@@ -195,11 +195,7 @@ where
         }
     }
 
-    let mut frame = Frame {
-        natoms: natoms as u32,
-        info: DictHandler(info),
-        arrs: DictHandler(arrs),
-    };
+    let mut frame = Frame::new(natoms as u32, info, arrs);
 
     // // any remain spaces
     // let (input, _) = multispace0::<_, nom::error::Error<&[u8]>>(input)
