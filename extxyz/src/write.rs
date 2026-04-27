@@ -3,21 +3,47 @@ use std::io::Write;
 
 use extxyz_types::{escape, Frame, Value};
 
-pub fn write_frames<W, I>(w: &mut W, frames: I) -> Result<()>
+/// Writes a sequence of frames to the given writer.
+///
+/// Each frame is serialized using [`write_frame`] and written in order.
+///
+/// # Arguments
+/// * `w` - The output writer.
+/// * `frames` - An iterable sequence of [`Frame`] values.
+///
+/// # Returns
+/// The number of frames successfully written.
+///
+/// # Errors
+/// Returns an error if writing to the output fails or if serializing any
+/// frame fails.
+///
+/// # Notes
+/// This function consumes the provided iterator.
+///
+/// # Examples
+/// ```ignore
+/// let frames = vec![frame1, frame2, frame3];
+/// let written = write_frames(&mut writer, frames)?;
+/// assert_eq!(written, 3);
+/// ```
+pub fn write_frames<W, I>(w: &mut W, frames: I) -> Result<usize>
 where
     W: Write,
     I: IntoIterator<Item = Frame>,
 {
+    let mut count = 0;
     for frame in frames {
         write_frame(w, &frame)?;
+        count += 1;
     }
-    Ok(())
+    Ok(count)
 }
 
 /// Writes a single frame in extended XYZ (extxyz) format.
 ///
 /// This function serializes a [`Frame`] into the extxyz text format and writes
-/// it to the provided writer. 
+/// it to the provided writer.
 /// The output includes a `Properties` field derived from the frame's
 /// array data, even if it was not explicitly present in the input. The `Lattice`
 /// field, if present, is written in column-major order following the extxyz
@@ -229,29 +255,6 @@ where
 
     Ok(())
 }
-
-// for multiframe writer
-// #[derive(Debug)]
-// pub struct FrameWriter<W> {
-//     w: W,
-// }
-//
-// impl<W: Write> FrameWriter<W> {
-//     pub fn new(w: W) -> Self {
-//         Self { w }
-//     }
-//
-//     pub fn write(&mut self, frame: &Frame) -> Result<()> {
-//         write_frame(&mut self.w, frame)?;
-//
-//         Ok(())
-//     }
-//
-//     pub fn finish(&mut self) -> Result<()> {
-//         self.w.flush()?;
-//         Ok(())
-//     }
-// }
 
 #[cfg(test)]
 mod tests {

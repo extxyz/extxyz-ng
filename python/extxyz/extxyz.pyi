@@ -14,8 +14,9 @@ class Frame:
     def arrs(self) -> dict[str, list[float | int | bool | str]]:
         """Per-atom or per-site tabular data stored as columns."""
 
-def read_frame(stream: typing.TextIO) -> Frame:
-    """Read a single frame from a text stream.
+def read_frame(stream: typing.BinaryIO) -> Frame:
+    """Read a single frame from a text stream, this is advanced reader requires file handler.
+    For most of use case, use `read_frames_from_file` is what you need.
 
     Parameters:
         stream: A file-like text stream ("r") containing encoded frame data.
@@ -25,8 +26,9 @@ def read_frame(stream: typing.TextIO) -> Frame:
     """
     ...
 
-def read_frames(stream: typing.TextIO) -> Iterator[Frame]:
-    """Read frames from a text stream.
+def read_frames(stream: typing.BinaryIO) -> Iterator[Frame]:
+    """Read frames from a text stream, this is advanced reader requires file handler.
+    For most of use case, use `read_frames_from_file` is what you need.
 
     Parameters:
         stream: A file-like text stream ("r") containing encoded frames.
@@ -58,24 +60,20 @@ def read_frames_from_file(inp: str | os.PathLike[str], /) -> Iterator[Frame]:
     """
     ...
 
-def write_frame(fh: typing.TextIO, frame: Frame, /) -> int:
+def write_frame(fh: typing.BinaryIO, frame: Frame, /) -> None:
     """Serialize a frame.
 
     Parameters:
         fh: File handler returned by open
         frame: Frame object to serialize.
-    Return: 
-        number of bytes being write
     """
     ...
 
-def write_frames(fh: typing.TextIO, frames: Iterator[Frame], /) -> int:
+def write_frames(fh: typing.BinaryIO, frames: Iterator[Frame], /) -> None:
     """Serialize frames to a file handler.
 
     Parameters:
         fh: File handler returned by open
         frames: iterator of Frames
-    Return: 
-        number of bytes being write
     """
     ...
