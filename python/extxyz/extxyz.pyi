@@ -14,7 +14,7 @@ class Frame:
     def arrs(self) -> dict[str, list[float | int | bool | str]]:
         """Per-atom or per-site tabular data stored as columns."""
 
-def read_frame(stream: typing.TextIO) -> Frame:
+def read_frame(stream: typing.BinaryIO) -> Frame:
     """Read a single frame from a text stream.
 
     Parameters:
@@ -25,7 +25,7 @@ def read_frame(stream: typing.TextIO) -> Frame:
     """
     ...
 
-def read_frames(stream: typing.TextIO) -> Iterator[Frame]:
+def read_frames(stream: typing.BinaryIO) -> Iterator[Frame]:
     """Read frames from a text stream.
 
     Parameters:
@@ -58,7 +58,7 @@ def read_frames_from_file(inp: str | os.PathLike[str], /) -> Iterator[Frame]:
     """
     ...
 
-def write_frame(fh: typing.TextIO, frame: Frame, /) -> int:
+def write_frame(fh: typing.BinaryIO, frame: Frame, /) -> int:
     """Serialize a frame.
 
     Parameters:
@@ -69,7 +69,7 @@ def write_frame(fh: typing.TextIO, frame: Frame, /) -> int:
     """
     ...
 
-def write_frames(fh: typing.TextIO, frames: Iterator[Frame], /) -> int:
+def write_frames(fh: typing.BinaryIO, frames: Iterator[Frame], /) -> int:
     """Serialize frames to a file handler.
 
     Parameters:

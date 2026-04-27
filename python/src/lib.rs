@@ -1,8 +1,8 @@
 use std::{io::BufReader, path::PathBuf};
 
 use extxyz::{
-    read_frame as rs_read_frame, read_frames as rs_read_frames, Frame, FrameReader,
-    FrameReaderOwned, Value as InnerValue,
+    read_frame as rs_read_frame, read_frames as rs_read_frames, write_frame as rs_write_frame,
+    write_frames as rs_write_frames, Frame, FrameReader, FrameReaderOwned, Value as InnerValue,
 };
 use pyo3::{prelude::*, types::PyDict};
 
@@ -66,25 +66,24 @@ impl PyFrame {
     }
 }
 
-struct PyTextIO {
+struct PyBinaryIO_R {
     // a TextIO
     obj: Py<PyAny>,
 }
 
-impl PyTextIO {
+impl PyBinaryIO_R {
     fn new(stream: Py<PyAny>) -> Self {
-        PyTextIO { obj: stream }
+        PyBinaryIO_R { obj: stream }
     }
 }
 
-impl std::io::Read for PyTextIO {
+impl std::io::Read for PyBinaryIO_R {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         Python::attach(|py| -> PyResult<usize> {
             let bytes = self
                 .obj
                 .call_method1(py, "read", (buf.len(),))?
-                .extract::<&str>(py)?
-                .as_bytes()
+                .extract::<&[u8]>(py)?
                 .to_vec();
 
             let n = bytes.len();
@@ -99,28 +98,58 @@ impl std::io::Read for PyTextIO {
 #[pyo3(name = "read_frame")]
 #[pyo3(text_signature = "(stream)")]
 fn py_read_frame(_py: Python, stream: Py<PyAny>) -> PyResult<PyFrame> {
-    let rd = PyTextIO::new(stream);
+    let rd = PyBinaryIO_R::new(stream);
     let mut rd = BufReader::new(rd);
     let frame = rs_read_frame(&mut rd)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
     Ok(PyFrame(frame))
 }
 
+struct PyBinaryIO_W {
+    // a TextIO as writer
+    obj: Py<PyAny>,
+}
+
+impl PyBinaryIO_W {
+    fn new(stream: Py<PyAny>) -> Self {
+        PyBinaryIO_W { obj: stream }
+    }
+}
+
+impl std::io::Write for PyBinaryIO_W {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        Python::attach(|py| -> PyResult<usize> {
+            let n = self
+                .obj
+                .call_method1(py, "write", (buf,))?
+                .extract::<usize>(py)?;
+            Ok(n)
+        })
+        .map_err(|e| std::io::Error::other(e.to_string()))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Python::attach(|py| -> PyResult<()> {
+            self.obj.call_method0(py, "flush")?;
+            Ok(())
+        })
+        .map_err(|e| std::io::Error::other(e.to_string()))
+    }
+}
+
 #[pyfunction]
 #[pyo3(name = "write_frame")]
 #[pyo3(text_signature = "(stream, frame)")]
-fn py_write_frame(_py: Python, stream: Py<PyAny>, frame: Py<PyFrame>) -> PyResult<usize> {
-    // let rd = PyTextIO::new(stream);
-    // let mut rd = BufReader::new(rd);
-    // let frame = rs_read_frame(&mut rd)
-    //     .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-    // Ok(PyFrame(frame))
-    todo!()
+fn py_write_frame(_py: Python, stream: Py<PyAny>, frame: Bound<'_, PyFrame>) -> PyResult<()> {
+    let mut w = PyBinaryIO_W::new(stream);
+    rs_write_frame(&mut w, &frame.borrow().0)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    Ok(())
 }
 
 #[pyclass]
 struct PyFrameIterator {
-    inner: FrameReaderOwned<BufReader<PyTextIO>>,
+    inner: FrameReaderOwned<BufReader<PyBinaryIO_R>>,
 }
 
 #[pymethods]
@@ -142,7 +171,7 @@ impl PyFrameIterator {
 #[pyo3(name = "read_frames")]
 #[pyo3(text_signature = "(stream)")]
 fn py_read_frames(_py: Python, stream: Py<PyAny>) -> PyResult<PyFrameIterator> {
-    let rd = PyTextIO::new(stream);
+    let rd = PyBinaryIO_R::new(stream);
     let rd = BufReader::new(rd);
     let frame_iter = PyFrameIterator {
         inner: FrameReaderOwned::new(rd),
