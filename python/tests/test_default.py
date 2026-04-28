@@ -138,11 +138,3 @@ def test_read_frames_from_and_write_using_context(tmp_path: Path):
 
     with open(fpath, "wb") as fh_write:
         write_frames(fh_write, frames)
-
-
-def test_read_from_ase_atoms():
-    pass
-
-
-def test_read_frome_ccmat_structure():
-    pass
