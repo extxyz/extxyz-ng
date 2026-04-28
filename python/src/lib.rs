@@ -16,9 +16,12 @@ struct Value(InnerValue);
 impl<'py> IntoPyObject<'py> for Value {
     type Target = PyAny;
     type Output = Bound<'py, PyAny>;
+    // Error can be Infallible because we know the exact type of what Value included so the
+    // conversion to python type is predictable and cannot fail.
     type Error = std::convert::Infallible;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        // unwrap() is used safely because the error is infallible.
         let obj = match self.0 {
             InnerValue::Integer(i) => (*i).into_pyobject(py)?.into_any(),
             InnerValue::Float(f) => (*f).into_pyobject(py)?.into_any(),

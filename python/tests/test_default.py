@@ -49,7 +49,7 @@ def test_read_frame_from_file():
     assert frame.natoms == 4
 
 
-def test_write_default(tmp_path: Path, default_frame: Frame):
+def test_write_default(tmp_path: Path, default_frame: Frame) -> None:
     fpath = tmp_path / "foo.xyz"
     with open(fpath, "wb") as fh:
         write_frame(fh, default_frame)
@@ -92,7 +92,7 @@ def test_read_frames_from_file():
     assert count == 6
 
 
-def test_write_frames_round_trip(tmp_path: Path):
+def test_write_frames_round_trip(tmp_path: Path) -> None:
     p = Path(__file__).parent / "mgb_multi_frames.xyz"
     fpath = tmp_path / "foo.xyz"
 
@@ -115,7 +115,7 @@ def test_write_frames_round_trip(tmp_path: Path):
     assert text_foo == text_baz
 
 
-def test_read_frames_from_file_and_write_to_file(tmp_path: Path):
+def test_read_frames_from_file_and_write_to_file(tmp_path: Path) -> None:
     p = Path(__file__).parent / "mgb_multi_frames.xyz"
     fpath = tmp_path / "foo.xyz"
 
@@ -129,7 +129,7 @@ def test_read_frames_from_file_and_write_to_file(tmp_path: Path):
 @pytest.mark.skip(
     reason="rework needed, this will fail, because frame didn't live long enough to go outside of the context, which it should"
 )
-def test_read_frames_from_and_write_using_context(tmp_path: Path):
+def test_read_frames_from_and_write_using_context(tmp_path: Path) -> None:
     p = Path(__file__).parent / "mgb_multi_frames.xyz"
     fpath = tmp_path / "foo.xyz"
 

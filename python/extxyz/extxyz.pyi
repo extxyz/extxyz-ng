@@ -5,12 +5,15 @@ import os
 class Frame:
     """Represents a single atomic configuration or data frame."""
 
+    @property
     def natoms(self) -> int:
         """Number of atoms in the configuration."""
 
+    @property
     def info(self) -> dict[str, str | int | float | bool | list[float | int]]:
         """Frame-level metadata (e.g. simulation or system properties)."""
 
+    @property
     def arrs(self) -> dict[str, list[float | int | bool | str]]:
         """Per-atom or per-site tabular data stored as columns."""
 
