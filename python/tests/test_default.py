@@ -3,6 +3,7 @@ from pathlib import Path
 from extxyz import (
     read_frame_from_file,
     read_frame,
+    read_frames_from_file,
     write_frame,
     write_frames,
     Frame,
@@ -20,7 +21,8 @@ def default_frame() -> Frame:
         return frame
 
 
-def test_read_from_file():
+def test_read_frame_from_file():
+    """test can read frame from file"""
     p = Path(__file__).parent / "mgb.xyz"
     frame = read_frame_from_file(p)
     assert frame.natoms == 4
@@ -33,13 +35,12 @@ def test_read_from_file():
 def test_write_default(tmp_path: Path, default_frame: Frame):
     fpath = tmp_path / "foo.xyz"
     with open(fpath, "wb") as fh:
-        nbytes = write_frame(fh, default_frame)
-        # assert nbytes == 20
+        write_frame(fh, default_frame)
 
     with open(fpath, "r") as fh:
         text = fpath.read_text()
-        print(text)
         print(default_frame)
+        assert text in str(default_frame)
 
 
 def test_read_frames():
@@ -53,6 +54,27 @@ def test_read_frames():
             count += 1
 
         assert count == 6
+
+
+def test_read_frames_from_file():
+    p = Path(__file__).parent / "mgb_multi_frames.xyz"
+    frames = read_frames_from_file(p)
+
+    count = 0
+    for frame in frames:
+        assert frame.natoms == 4
+        count += 1
+
+    assert count == 6
+
+    frames = read_frames_from_file(str(p))
+
+    count = 0
+    for frame in frames:
+        assert frame.natoms == 4
+        count += 1
+
+    assert count == 6
 
 
 def test_write_frames():

@@ -1,14 +1,15 @@
+#![allow(non_camel_case_types)]
+
 use std::{io::BufReader, path::PathBuf};
 
 use extxyz::{
     read_frame as rs_read_frame, read_frames as rs_read_frames, write_frame as rs_write_frame,
     write_frames as rs_write_frames, Frame, FrameReader, FrameReaderOwned, Value as InnerValue,
 };
-use pyo3::{prelude::*, types::PyDict};
-
-#[pyclass]
-#[pyo3(name = "Frame")]
-struct PyFrame(Frame);
+use pyo3::{
+    prelude::*,
+    types::{PyDict, PyString},
+};
 
 struct Value(InnerValue);
 
@@ -33,6 +34,19 @@ impl<'py> IntoPyObject<'py> for Value {
             InnerValue::MatrixText(items, _) => todo!(),
             InnerValue::Unsupported => todo!(),
         }
+    }
+}
+
+#[pyclass]
+#[pyo3(name = "Frame")]
+struct PyFrame(Frame);
+
+impl std::fmt::Display for PyFrame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut buf = Vec::new();
+        rs_write_frame(&mut buf, &self.0).map_err(|_| std::fmt::Error)?;
+        let s = std::str::from_utf8(&buf).map_err(|_| std::fmt::Error)?;
+        f.write_str(s)
     }
 }
 
@@ -63,6 +77,11 @@ impl PyFrame {
         }
 
         Ok(dict.into())
+    }
+
+    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let class_name: Bound<'_, PyString> = slf.get_type().qualname()?;
+        Ok(format!("----- {} ----- : \n{}", class_name, slf))
     }
 }
 
@@ -148,12 +167,32 @@ fn py_write_frame(_py: Python, stream: Py<PyAny>, frame: Bound<'_, PyFrame>) -> 
 }
 
 #[pyclass]
-struct PyFrameIterator {
+struct PyFrameIteratorBinaryIO {
     inner: FrameReaderOwned<BufReader<PyBinaryIO_R>>,
 }
 
 #[pymethods]
-impl PyFrameIterator {
+impl PyFrameIteratorBinaryIO {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(mut slf: PyRefMut<'_, Self>) -> PyResult<Option<PyFrame>> {
+        match slf.inner.next() {
+            None => Ok(None),
+            Some(Ok(frame)) => Ok(Some(PyFrame(frame))),
+            Some(Err(err)) => Err(pyo3::exceptions::PyIOError::new_err(err.to_string())),
+        }
+    }
+}
+
+#[pyclass]
+struct PyFrameIteratorFileReader {
+    inner: FrameReaderOwned<BufReader<std::fs::File>>,
+}
+
+#[pymethods]
+impl PyFrameIteratorFileReader {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -170,10 +209,10 @@ impl PyFrameIterator {
 #[pyfunction]
 #[pyo3(name = "read_frames")]
 #[pyo3(text_signature = "(stream)")]
-fn py_read_frames(_py: Python, stream: Py<PyAny>) -> PyResult<PyFrameIterator> {
+fn py_read_frames(_py: Python, stream: Py<PyAny>) -> PyResult<PyFrameIteratorBinaryIO> {
     let rd = PyBinaryIO_R::new(stream);
     let rd = BufReader::new(rd);
-    let frame_iter = PyFrameIterator {
+    let frame_iter = PyFrameIteratorBinaryIO {
         inner: FrameReaderOwned::new(rd),
     };
     Ok(frame_iter)
@@ -200,8 +239,7 @@ fn py_read_frame_from_file(_py: Python, inp: PathBuf) -> PyResult<PyFrame> {
         .read(true)
         .open(&inp)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-    let rd = std::io::BufReader::new(file);
-    let mut rd = BufReader::new(rd);
+    let mut rd = std::io::BufReader::new(file);
     let frame = rs_read_frame(&mut rd)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
     Ok(PyFrame(frame))
@@ -210,17 +248,16 @@ fn py_read_frame_from_file(_py: Python, inp: PathBuf) -> PyResult<PyFrame> {
 #[pyfunction]
 #[pyo3(name = "read_frames_from_file")]
 #[pyo3(text_signature = "(inp)")]
-fn py_read_frames_from_file(_py: Python, inp: PathBuf) -> PyResult<PyFrame> {
-    // let file = std::fs::OpenOptions::new()
-    //     .read(true)
-    //     .open(&inp)
-    //     .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-    // let rd = std::io::BufReader::new(file);
-    // let mut rd = BufReader::new(rd);
-    // let frame = rs_read_frame(&mut rd)
-    //     .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-    // Ok(PyFrame(frame))
-    todo!()
+fn py_read_frames_from_file(_py: Python, inp: PathBuf) -> PyResult<PyFrameIteratorFileReader> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .open(&inp)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    let rd = std::io::BufReader::new(file);
+    let frame_iter = PyFrameIteratorFileReader {
+        inner: FrameReaderOwned::new(rd),
+    };
+    Ok(frame_iter)
 }
 
 #[pymodule]
