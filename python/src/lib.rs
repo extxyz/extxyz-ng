@@ -8,7 +8,7 @@ use extxyz::{
 };
 use pyo3::{
     prelude::*,
-    types::{PyDict, PyString},
+    types::{PyBool, PyDict, PyList, PyString},
 };
 
 struct Value(InnerValue);
@@ -19,21 +19,86 @@ impl<'py> IntoPyObject<'py> for Value {
     type Error = std::convert::Infallible;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        match self.0 {
-            InnerValue::Integer(integer) => todo!(),
-            InnerValue::Float(float_num) => todo!(),
-            InnerValue::Bool(boolean) => todo!(),
-            InnerValue::Str(text) => todo!(),
-            InnerValue::VecInteger(integers, _) => todo!(),
-            InnerValue::VecFloat(float_nums, _) => todo!(),
-            InnerValue::VecBool(booleans, _) => todo!(),
-            InnerValue::VecText(texts, _) => todo!(),
-            InnerValue::MatrixInteger(items, _) => todo!(),
-            InnerValue::MatrixFloat(items, _) => todo!(),
-            InnerValue::MatrixBool(items, _) => todo!(),
-            InnerValue::MatrixText(items, _) => todo!(),
-            InnerValue::Unsupported => todo!(),
-        }
+        let obj = match self.0 {
+            InnerValue::Integer(i) => (*i).into_pyobject(py)?.into_any(),
+            InnerValue::Float(f) => (*f).into_pyobject(py)?.into_any(),
+            InnerValue::Bool(b) => PyBool::new(py, *b).to_owned().into_any(),
+            InnerValue::Str(s) => (*s).into_pyobject(py)?.into_any(),
+
+            InnerValue::VecInteger(v, _) => {
+                let list = PyList::new(py, v.into_iter().map(|x| x.into_pyobject(py).unwrap()))
+                    .expect("vec of int to 1d list");
+                list.into_any()
+            }
+
+            InnerValue::VecFloat(v, _) => {
+                let list = PyList::new(py, v.into_iter().map(|x| x.into_pyobject(py).unwrap()))
+                    .expect("vec of float to 1d list");
+                list.into_any()
+            }
+
+            InnerValue::VecBool(v, _) => {
+                let list = PyList::new(py, v.into_iter().map(|x| x.into_pyobject(py).unwrap()))
+                    .expect("vec of bool to 1d list");
+                list.into_any()
+            }
+
+            InnerValue::VecText(v, _) => {
+                let list = PyList::new(py, v.into_iter().map(|x| x.into_pyobject(py).unwrap()))
+                    .expect("vec of str to 1d list");
+                list.into_any()
+            }
+
+            InnerValue::MatrixInteger(m, _) => {
+                let rows = PyList::new(
+                    py,
+                    m.into_iter().map(|row| {
+                        PyList::new(py, row.into_iter().map(|x| x.into_pyobject(py).unwrap()))
+                            .unwrap()
+                    }),
+                )
+                .expect("2d int");
+                rows.into_any()
+            }
+
+            InnerValue::MatrixFloat(m, _) => {
+                let rows = PyList::new(
+                    py,
+                    m.into_iter().map(|row| {
+                        PyList::new(py, row.into_iter().map(|x| x.into_pyobject(py).unwrap()))
+                            .unwrap()
+                    }),
+                )
+                .expect("2d float");
+                rows.into_any()
+            }
+
+            InnerValue::MatrixBool(m, _) => {
+                let rows = PyList::new(
+                    py,
+                    m.into_iter().map(|row| {
+                        PyList::new(py, row.into_iter().map(|x| x.into_pyobject(py).unwrap()))
+                            .unwrap()
+                    }),
+                )
+                .expect("2d bool");
+                rows.into_any()
+            }
+
+            InnerValue::MatrixText(m, _) => {
+                let rows = PyList::new(
+                    py,
+                    m.into_iter().map(|row| {
+                        PyList::new(py, row.into_iter().map(|x| x.into_pyobject(py).unwrap()))
+                            .unwrap()
+                    }),
+                )
+                .expect("2d str");
+                rows.into_any()
+            }
+            InnerValue::Unsupported => py.None().into_bound(py),
+        };
+        Ok(obj)
     }
 }
 
@@ -57,6 +122,7 @@ impl PyFrame {
         Ok(self_.0.natoms())
     }
 
+    #[getter]
     fn arrs(self_: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let dict = PyDict::new(py);
         let arrs = self_.0.arrs();
@@ -68,6 +134,7 @@ impl PyFrame {
         Ok(dict.into())
     }
 
+    #[getter]
     fn info(self_: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let dict = PyDict::new(py);
         let arrs = self_.0.info();

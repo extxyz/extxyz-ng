@@ -27,6 +27,22 @@ def test_read_frame_from_file():
     p = Path(__file__).parent / "mgb.xyz"
     frame = read_frame_from_file(p)
     assert frame.natoms == 4
+    assert frame.info == {
+        "key1": "a",
+        "key2": "a/b",
+        "key3": "a@b",
+        "key4": "a@b",
+        "Properties": "species:S:1:pos:R:3",
+    }
+    assert frame.arrs == {
+        "species": ["Mg", "C", "C", "C"],
+        "pos": [
+            [-4.2565, 3.7918, -2.54123],
+            [-1.15405, 2.86652, -1.26699],
+            [-5.53758, 3.70936, 0.63504],
+            [-7.2825, 4.71303, -3.82016],
+        ],
+    }
 
     # check str works
     frame = read_frame_from_file(str(p))
