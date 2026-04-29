@@ -3,55 +3,78 @@ use std::io::Write;
 
 use extxyz_types::{escape, Frame, Value};
 
-pub fn write_frames<W, I>(w: &mut W, frames: I) -> Result<()>
+/// Writes a sequence of frames to the given writer.
+///
+/// Each frame is serialized using [`write_frame`] and written in order.
+///
+/// # Arguments
+/// * `w` - The output writer.
+/// * `frames` - An iterable sequence of [`Frame`] values.
+///
+/// # Returns
+/// The number of frames successfully written.
+///
+/// # Errors
+/// Returns an error if writing to the output fails or if serializing any
+/// frame fails.
+///
+/// # Notes
+/// This function consumes the provided iterator.
+///
+/// # Examples
+/// ```ignore
+/// let frames = vec![frame1, frame2, frame3];
+/// let written = write_frames(&mut writer, frames)?;
+/// assert_eq!(written, 3);
+/// ```
+pub fn write_frames<W, I>(w: &mut W, frames: I) -> Result<usize>
 where
     W: Write,
     I: IntoIterator<Item = Frame>,
 {
+    let mut count = 0;
     for frame in frames {
         write_frame(w, &frame)?;
+        count += 1;
     }
-    Ok(())
+    Ok(count)
 }
 
-// // deprecated, this is the old style in representing lattice as flatten vecs
-// fn write_lattice<T, W>(w: &mut W, m: &[Vec<T>]) -> Result<()>
-// where
-//     T: Default + std::fmt::Display + Copy,
-//     W: Write,
-// {
-//     if m.len() != 3 {
-//         return Err(ExtxyzError::InvalidValue("expect 3x3 matrix"));
-//     }
-//
-//     // transpose lattice matrix which has vectors in column-wise.
-//     let mut m3 = [[T::default(); 3]; 3];
-//
-//     for i in 0..3 {
-//         if m[i].len() != 3 {
-//             return Err(ExtxyzError::InvalidValue("expect 3x3 matrix"));
-//         }
-//         for j in 0..3 {
-//             m3[i][j] = m[j][i];
-//         }
-//     }
-//
-//     write!(w, "\"")?;
-//
-//     m3.as_flattened()
-//         .iter()
-//         .try_for_each(|s| write!(w, "{s}"))?;
-//
-//     write!(w, "\"")?;
-//
-//     Ok(())
-// }
-
-/// instead of calling c api, it is easier to reimplement it, because I don't need to do parsing.
-/// since it is rust, performance wise also compatible with c implementation and safe.
+/// Writes a single frame in extended XYZ (extxyz) format.
+///
+/// This function serializes a [`Frame`] into the extxyz text format and writes
+/// it to the provided writer.
+/// The output includes a `Properties` field derived from the frame's
+/// array data, even if it was not explicitly present in the input. The `Lattice`
+/// field, if present, is written in column-major order following the extxyz
+/// specification.
+///
+/// # Parameters
+/// - `w`: A writer implementing [`Write`] to which the frame will be written.
+/// - `frame`: The [`Frame`] to serialize.
 ///
 /// # Errors
-/// ???
+/// Returns an error if:
+/// - Writing to the underlying writer fails.
+/// - The `Lattice` field exists but is not a valid 3×3 integer or float matrix.
+/// - Any internal formatting or serialization step fails.
+///
+/// # Notes
+/// - Keys and values in the frame's metadata are escaped as required by the
+///   extxyz format.
+/// - The ordering of metadata fields follows the internal ordering of the frame.
+/// - The `Properties` field is not taken directly from metadata but inferred
+///   from the atomic data arrays.
+///
+/// # Examples
+/// ```ignore
+/// use std::fs::File;
+/// use extxyz::write_frame;
+//
+/// let mut file = File::create("output.xyz")?;
+/// write_frame(&mut file, &frame)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn write_frame<W>(w: &mut W, frame: &Frame) -> Result<()>
 where
     W: Write,
@@ -61,14 +84,15 @@ where
     writeln!(w, "{natoms}")?;
 
     // info
-    let mut iter = frame.info.0.iter().peekable();
+    let info = frame.info_orderd();
+    let mut iter = info.iter().peekable();
     while let Some((k, v)) = iter.next() {
         // the inner datastructure will store "Properties" as a key (if exist), but in the
         // write function the Properties field is deduct from the arr.
         // When read the xyz may not have "Properties" field, but write will always have it.
         // XXX: therefore in the read (the parser, if I impl myself) need to validate the
         // properties is conform with what provided.
-        if k.as_str() == "Properties" {
+        if *k == "Properties" {
             continue;
         }
 
@@ -78,7 +102,7 @@ where
 
         // in extxyz c implementation, lattice treated different write in column-wise and use
         // single space as spliter
-        if k.as_str() == "Lattice" {
+        if *k == "Lattice" {
             match v {
                 Value::MatrixInteger(_, _) => {
                     write!(w, "{v}")?;
@@ -107,7 +131,8 @@ where
     write!(w, "Properties=")?;
 
     let mut s = String::new();
-    let mut iter = frame.arrs.0.iter().peekable();
+    let arrs = frame.arrs_orderd();
+    let mut iter = arrs.iter().peekable();
     while let Some((k, v)) = iter.next() {
         s.push_str(k);
         s.push(':');
@@ -137,7 +162,7 @@ where
 
     // arrays
     for i in 0..natoms {
-        let mut iter = frame.arrs.0.iter().peekable();
+        let mut iter = arrs.iter().peekable();
         while let Some((_, v)) = iter.next() {
             let i = i as usize;
 
@@ -230,29 +255,6 @@ where
 
     Ok(())
 }
-
-// for multiframe writer
-// #[derive(Debug)]
-// pub struct FrameWriter<W> {
-//     w: W,
-// }
-//
-// impl<W: Write> FrameWriter<W> {
-//     pub fn new(w: W) -> Self {
-//         Self { w }
-//     }
-//
-//     pub fn write(&mut self, frame: &Frame) -> Result<()> {
-//         write_frame(&mut self.w, frame)?;
-//
-//         Ok(())
-//     }
-//
-//     pub fn finish(&mut self) -> Result<()> {
-//         self.w.flush()?;
-//         Ok(())
-//     }
-// }
 
 #[cfg(test)]
 mod tests {

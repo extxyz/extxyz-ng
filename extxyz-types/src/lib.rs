@@ -330,12 +330,21 @@ impl<'a> IntoIterator for &'a DictHandler {
 /// ```
 #[derive(Debug)]
 pub struct Frame {
-    pub natoms: u32,
-    pub info: DictHandler,
-    pub arrs: DictHandler,
+    natoms: u32,
+    info: DictHandler,
+    arrs: DictHandler,
 }
 
 impl Frame {
+    #[must_use]
+    pub fn new(natoms: u32, info: Vec<(String, Value)>, arrs: Vec<(String, Value)>) -> Self {
+        Self {
+            natoms,
+            info: DictHandler(info),
+            arrs: DictHandler(arrs),
+        }
+    }
+
     /// Returns the number of atoms in the frame.
     #[must_use]
     pub fn natoms(&self) -> u32 {
@@ -385,7 +394,25 @@ impl Frame {
     /// ```
     #[must_use]
     pub fn info(&self) -> HashMap<&str, &Value> {
-        let info = self.info.iter().map(|(k, v)| (k.as_str(), v));
-        info.collect::<HashMap<_, _>>()
+        self.info
+            .iter()
+            .map(|(k, v)| (k.as_str(), v))
+            .collect::<HashMap<_, _>>()
+    }
+
+    /// Return info as `Vec<(&str, &Value)>` keep the original order
+    pub fn info_orderd(&self) -> Vec<(&str, &Value)> {
+        self.info
+            .iter()
+            .map(|(k, v)| (k.as_str(), v))
+            .collect::<Vec<(_, _)>>()
+    }
+
+    /// Return arrs as `Vec<(&str, &Value)>` keep the original order
+    pub fn arrs_orderd(&self) -> Vec<(&str, &Value)> {
+        self.arrs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v))
+            .collect::<Vec<(_, _)>>()
     }
 }

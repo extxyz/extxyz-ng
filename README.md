@@ -1,15 +1,73 @@
 # extxyz
 
 Extended XYZ specification and parsers.
+Implemented in rust, fast, no memory issue, with python binding provided.
 
-Implemented in rust, with python binding provided 
+## Usage
 
-⚠️ Project status: This repository is still under active development.
-Basic read and write functionality is implemented, but the API and features are not yet finalized or fully polished.
+### Rust
 
-Benchmarking is a key upcoming focus, particularly on large-scale structures, to ensure performance and robustness.
+### Python
 
-See below the roadmap section for the planned steps toward the first stable release.
+Install the package:
+
+```console
+pip install extxyz-ng
+```
+
+The library to use is `extxyz`.
+
+```python
+from extxyz import (
+    read_frame,
+    read_frame_from_file,
+    read_frames,
+    read_frames_from_file,
+    write_frame,
+    write_frames,
+)
+
+# read a frame from an .xyz file 
+p = Path(__file__).parent / "mgb.xyz"
+frame = read_frame_from_file(p)
+
+# or from an open file handler 
+# (this is advanced only if you need the file handler, `read_frame_from_file` should cover most of the use cases)
+with open(p, "rb") as fh:
+    frame = read_frame(fh)
+
+# read multiple frames from an .xyz file, it returns an iterator
+p = Path(__file__).parent / "mgb_multi_frames.xyz"
+frames = read_frames_from_file(p)
+
+# or from an open file handler, it returns an iterator
+# NOTE: the frames should be used inside the open context, see the read-write round-trip example below
+p = Path(__file__).parent / "mgb_multi_frames.xyz"
+with open(p, "rb") as fh:
+    frames = read_frames(fh)
+
+# write a frame to a file (note the "wb" not "w", because we handle the bytes directly for performance)
+fpath = Path(__file__).parent / "foo.xyz"
+with open(fpath, "wb") as fh:
+    write_frame(fh, default_frame)
+
+# write multiple frames into a file
+with open(fpath, "wb") as fh_write:
+    write_frames(fh_write, frames)
+```
+
+The round-trip read and write example of frames.
+The frames read from file handler **must** be used inside the `open` context, because the lifetime of the frames should not longer than the file handler.
+
+```python
+inp = Path(__file__).parent / "mgb_multi_frames.xyz"
+out = Path(__file__).parent / "foo.xyz"
+
+with open(inp, "rb") as fh_read, open(out, "wb") as fh_write:
+    # should not close the file handler for read when streaming.
+    frames = read_frames(fh_read)
+    write_frames(fh_write, frames)
+```
 
 ## Why/when you should/shouldnt use old c implementation aka `libAtoms/extxyz`
 
@@ -214,9 +272,20 @@ But it will not run the final crates.io upload.
 ## Roadmap
 
 - [ ] Julia binding
-- [ ] Python binding
+- [x] Python binding
 - [x] benchmark on speed when parsing large files.
 - [x] read multiple frames.
 - [x] benchmark the memory usage when parsing
 - [x] ~~Fortran binding (not planned)~~
 - [ ] ccmat integration through features tag
+- [ ] on python side, interop with ase atoms data structure.
+- [ ] v0 is marking all functionality with python bindings. To get into community to be used so I have more API feedback.
+- [ ] v1 is make the stable APIs, then the project should be regard as fully complete.
+
+## License
+
+All contributions must retain this attribution.
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+

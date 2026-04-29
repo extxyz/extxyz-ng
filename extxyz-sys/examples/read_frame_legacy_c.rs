@@ -8,7 +8,7 @@ where
     use extxyz_sys::read_frame as _read_frame;
     let (natoms, info, arrs) = _read_frame(rd, None).unwrap();
 
-    Frame { natoms, info, arrs }
+    Frame::new(natoms, info.0, arrs.0)
 }
 
 fn main() {
