@@ -53,15 +53,16 @@ jobs:
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
+          working-directory: python
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          manylinux: auto
+          manylinux: ${{ matrix.platform.manylinux }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.platform.target }}
-          path: dist
+          path: python/dist
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
@@ -91,6 +92,7 @@ jobs:
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
+          working-directory: python
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -99,7 +101,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-musllinux-${{ matrix.platform.target }}
-          path: dist
+          path: python/dist
   windows:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
@@ -129,6 +131,7 @@ jobs:
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
+          working-directory: python
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -136,14 +139,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-windows-${{ matrix.platform.target }}
-          path: dist
+          path: python/dist
   macos:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
         platform:
-          - runner: macos-13
-            target: x86_64
           - runner: macos-14
             target: aarch64
     steps:
@@ -161,6 +162,7 @@ jobs:
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
+          working-directory: python
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -168,7 +170,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-macos-${{ matrix.platform.target }}
-          path: dist
+          path: python/dist
   sdist:
     runs-on: ubuntu-latest
     steps:
@@ -176,13 +178,15 @@ jobs:
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
+          working-directory: python
           command: sdist
           args: --out dist
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
+          working-directory: python
           name: wheels-sdist
-          path: dist
+          path: python/dist
   release:
     name: Release
     runs-on: ubuntu-latest
