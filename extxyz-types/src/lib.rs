@@ -435,6 +435,25 @@ impl Frame {
         };
     }
 
+    /// Insert a key-value pair to the internal `info` store.
+    ///
+    /// If the key already exists, its value is replaced and the previous
+    /// value is returned.
+    ///
+    /// If the key does not exist, the pair is inserted and `None` is returned.
+    pub fn insert_info(&mut self, key: &str, value: Value) -> Option<Value> {
+        if let Some((_, old_value)) = self.info.0.iter_mut().find(|(k, _)| k == key) {
+            return Some(std::mem::replace(old_value, value));
+        }
+
+        self.info.0.push((key.to_string(), value));
+        None
+    }
+
+    pub fn insert_column(&mut self, key: &str, value: Value) -> Option<Value> {
+        todo!()
+    }
+
     /// Returns the frame metadata (`arrs`) as a `HashMap` for easy lookup.
     ///
     /// Keys are `&str` slices pointing to the original `String`s inside

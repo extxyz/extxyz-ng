@@ -29,35 +29,31 @@ impl<'py> IntoPyObject<'py> for Value {
             InnerValue::Str(s) => (*s).into_pyobject(py)?.into_any(),
 
             InnerValue::VecInteger(v, _) => {
-                let list = PyList::new(py, v.into_iter().map(|x| x.into_pyobject(py).unwrap()))
-                    .expect("vec of int to 1d list");
-                list.into_any()
+                let v = v.into_iter().map(|x| *x).collect::<Vec<_>>();
+                v.into_pyobject(py).unwrap()
             }
 
             InnerValue::VecFloat(v, _) => {
-                let list = PyList::new(py, v.into_iter().map(|x| x.into_pyobject(py).unwrap()))
-                    .expect("vec of float to 1d list");
-                list.into_any()
+                let v = v.into_iter().map(|x| *x).collect::<Vec<_>>();
+                v.into_pyobject(py).unwrap()
             }
 
             InnerValue::VecBool(v, _) => {
-                let list = PyList::new(py, v.into_iter().map(|x| x.into_pyobject(py).unwrap()))
-                    .expect("vec of bool to 1d list");
-                list.into_any()
+                let v = v.into_iter().map(|x| *x).collect::<Vec<_>>();
+                v.into_pyobject(py).unwrap()
             }
 
             InnerValue::VecText(v, _) => {
-                let list = PyList::new(py, v.into_iter().map(|x| x.into_pyobject(py).unwrap()))
-                    .expect("vec of str to 1d list");
-                list.into_any()
+                let v = v.into_iter().map(|x| (*x).to_string()).collect::<Vec<_>>();
+                v.into_pyobject(py).unwrap()
             }
 
             InnerValue::MatrixInteger(m, _) => {
                 let rows = PyList::new(
                     py,
                     m.into_iter().map(|row| {
-                        PyList::new(py, row.into_iter().map(|x| x.into_pyobject(py).unwrap()))
-                            .unwrap()
+                        let row = row.into_iter().map(|x| *x).collect::<Vec<_>>();
+                        row.into_pyobject(py).unwrap()
                     }),
                 )
                 .expect("2d int");
@@ -68,8 +64,8 @@ impl<'py> IntoPyObject<'py> for Value {
                 let rows = PyList::new(
                     py,
                     m.into_iter().map(|row| {
-                        PyList::new(py, row.into_iter().map(|x| x.into_pyobject(py).unwrap()))
-                            .unwrap()
+                        let row = row.into_iter().map(|x| *x).collect::<Vec<_>>();
+                        row.into_pyobject(py).unwrap()
                     }),
                 )
                 .expect("2d float");
@@ -80,8 +76,8 @@ impl<'py> IntoPyObject<'py> for Value {
                 let rows = PyList::new(
                     py,
                     m.into_iter().map(|row| {
-                        PyList::new(py, row.into_iter().map(|x| x.into_pyobject(py).unwrap()))
-                            .unwrap()
+                        let row = row.into_iter().map(|x| *x).collect::<Vec<_>>();
+                        row.into_pyobject(py).unwrap()
                     }),
                 )
                 .expect("2d bool");
@@ -92,8 +88,11 @@ impl<'py> IntoPyObject<'py> for Value {
                 let rows = PyList::new(
                     py,
                     m.into_iter().map(|row| {
-                        PyList::new(py, row.into_iter().map(|x| x.into_pyobject(py).unwrap()))
-                            .unwrap()
+                        let row = row
+                            .into_iter()
+                            .map(|x| (*x).to_string())
+                            .collect::<Vec<_>>();
+                        row.into_pyobject(py).unwrap()
                     }),
                 )
                 .expect("2d str");
@@ -102,6 +101,26 @@ impl<'py> IntoPyObject<'py> for Value {
             InnerValue::Unsupported => py.None().into_bound(py),
         };
         Ok(obj)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for Value {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        if let Ok(i) = obj.extract::<i32>() {
+            return Ok(Value(InnerValue::Integer(extxyz::Integer::from(i))));
+        }
+        if let Ok(f) = obj.extract::<f64>() {
+            return Ok(Value(InnerValue::Float(extxyz::FloatNum::from(f))));
+        }
+        if let Ok(b) = obj.extract::<bool>() {
+            return Ok(Value(InnerValue::Bool(extxyz::Boolean::from(b))));
+        }
+        if let Ok(s) = obj.extract::<String>() {
+            return Ok(Value(InnerValue::Str(extxyz::Text::from(s))));
+        }
+        todo!()
     }
 }
 
@@ -120,6 +139,19 @@ impl std::fmt::Display for PyFrame {
 
 #[pymethods]
 impl PyFrame {
+    #[new]
+    fn py_new(
+        natoms: u32,
+        info: Vec<(String, Value)>,
+        arrs: Vec<(String, Value)>,
+    ) -> PyResult<Self> {
+        let info = info.into_iter().map(|(k, v)| (k, v.0)).collect();
+        let arrs = arrs.into_iter().map(|(k, v)| (k, v.0)).collect();
+        let inner_frame = Frame::new(natoms, info, arrs);
+        let slf = Self(inner_frame);
+        Ok(slf)
+    }
+
     #[getter]
     fn natoms(self_: PyRef<'_, Self>) -> PyResult<u32> {
         Ok(self_.0.natoms())
