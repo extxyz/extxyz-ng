@@ -3,8 +3,8 @@
 [![crates.io version](https://img.shields.io/crates/v/extxyz-ng.svg)](https://crates.io/crates/extxyz-ng)
 [![Rust Docs](https://img.shields.io/docsrs/extxyz-ng?label=docs%20Rust)](https://docs.rs/extxyz-ng)
 
-[![PyPI - Version](https://img.shields.io/pypi/v/pyextxyz)](https://pypi.org/project/pyextxyz/)
-[![Python Docs](https://img.shields.io/badge/docs-Python%20API-blue)](https://github.com/extxyz/extxyz/blob/master/README.md)
+[![PyPI - Version](https://img.shields.io/pypi/v/extxyz-ng)](https://pypi.org/project/extxyz-ng/)
+[![Python Docs](https://img.shields.io/badge/docs-Python%20API-blue)](https://github.com/extxyz/extxyz#Python)
 
 Extended XYZ specification and parsers.
 Implemented in rust, fast, no memory issue, with python bindings.
@@ -13,6 +13,11 @@ Performance is a central focus, especially for incremental read/write for large-
 Frames are processed in a streaming fashion using buffered I/O, enabling a minimal memory footprint.
 
 Compare to legacy C implementation, this approach achieves up to 4× faster performance while reducing memory usage to half for large files. See [benchmark](#performance-benchmark).
+
+This package is used by:
+
+- [ccmat](https://github.com/unkcpz/ccmat): crates family that includes toolings for material science.
+- [vizmat](github.com/rs4rse/vizmat): online molecule/crystal visualizer.
 
 ## Usage
 
