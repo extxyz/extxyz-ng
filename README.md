@@ -1,11 +1,78 @@
 # extxyz
 
+[![crates.io version](https://img.shields.io/crates/v/extxyz-ng.svg)](https://crates.io/crates/extxyz-ng)
+[![Rust Docs](https://img.shields.io/docsrs/extxyz-ng?label=docs%20Rust)](https://docs.rs/extxyz-ng)
+
+[![PyPI - Version](https://img.shields.io/pypi/v/pyextxyz)](https://pypi.org/project/pyextxyz/)
+[![Python Docs](https://img.shields.io/badge/docs-Python%20API-blue)](https://github.com/extxyz/extxyz/blob/master/README.md)
+
 Extended XYZ specification and parsers.
-Implemented in rust, fast, no memory issue, with python binding provided.
+Implemented in rust, fast, no memory issue, with python bindings.
+
+Performance is a central focus, especially for incremental read/write for large-scale trajectories. 
+Frames are processed in a streaming fashion using buffered I/O, enabling a minimal memory footprint.
+
+Compare to legacy C implementation, this approach achieves up to 4× faster performance while reducing memory usage to half for large files. See [benchmark](#performance-benchmark).
 
 ## Usage
 
+This crate provides a low-level parser for the format, designed to be easily converted into structured data compatible with the [ccmat](https://github.com/ccmat-lab/ccmat) library.
+For high-level tasks such as analyzing crystal or molecular structures, we recommend using `ccmat` directly, which offers both Rust and Python APIs.
+
 ### Rust
+
+To use this in your rust project, run `cargo add extxyz-ng` or add it to your `Cargo.toml`:
+
+```toml
+[dependencies]
+extxyz = { package = "extxyz-ng", version = "0" }
+```
+
+To read/write a structure frame from file, 
+
+```rust
+use std::fs;
+use extxyz::read_frame;
+
+fn main() {
+    let path = "./structure.xyz";
+    let file = fs::File::open(path).unwrap();
+    let mut rd = std::io::BufReader::new(file);
+
+    let frame = read_frame(&mut rd).unwrap();
+    println!(frame.natoms);
+    println!(frame.info);
+    println!(frame.arrs);
+
+    let mut file = File::create("output.xyz")?;
+    let mut w = BufWriter::new(file);
+    write_frame(&mut w, &frame).unwrap();
+}
+```
+
+Or to read/write frames from for example LAMMPS trajactories outputs,
+
+```rust
+use std::fs;
+use extxyz::read_frames;
+
+fn main() {
+    let path = "./trajactories.xyz";
+    let file = fs::File::open(path).expect("Failed to read file");
+    let mut rd = std::io::BufReader::new(file);
+
+    let frames = read_frames(&mut rd);
+    for frame in frames {
+        println!(frame.natoms);
+        println!(frame.info);
+        println!(frame.arrs);
+    }
+
+    let mut file = File::create("output_trajs.xyz")?;
+    let mut w = BufWriter::new(file);
+    write_frames(&mut w, frames).unwrap();
+}
+```
 
 ### Python
 
