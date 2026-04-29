@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["extxyz", "extxyz-types", "extxyz-sys"]
+exclude = ["python"]
 
 [workspace.package]
 version = "0.0.1"

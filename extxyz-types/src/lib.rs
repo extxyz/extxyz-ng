@@ -190,6 +190,49 @@ impl std::fmt::Display for Text {
     }
 }
 
+/// A dynamically-typed container for extended XYZ property values.
+///
+/// `Value` represents the different data types that can appear in extended
+/// XYZ metadata or per-atom properties. It supports scalar values, vectors,
+/// and matrices across several primitive types.
+///
+/// # Variants
+/// ## Scalar values
+/// - `Integer`: A single integer value.
+/// - `Float`: A single floating-point value.
+/// - `Bool`: A boolean value.
+/// - `Str`: A string value.
+///
+/// ## Vector values
+/// - `VecInteger(Vec<Integer>, u32)`: A vector of integers and its length.
+/// - `VecFloat(Vec<FloatNum>, u32)`: A vector of floats and its length.
+/// - `VecBool(Vec<Boolean>, u32)`: A vector of booleans and its length.
+/// - `VecText(Vec<Text>, u32)`: A vector of strings and its length.
+///
+/// ## Matrix values
+/// - `MatrixInteger(Vec<Vec<Integer>>, (u32, u32))`: A 2D array of integers
+///   with shape `(rows, cols)`.
+/// - `MatrixFloat(Vec<Vec<FloatNum>>, (u32, u32))`: A 2D array of floats
+///   with shape `(rows, cols)`.
+/// - `MatrixBool(Vec<Vec<Boolean>>, (u32, u32))`: A 2D array of booleans
+///   with shape `(rows, cols)`.
+/// - `MatrixText(Vec<Vec<Text>>, (u32, u32))`: A 2D array of strings
+///   with shape `(rows, cols)`.
+///
+/// ## Fallback
+/// - `Unsupported`: Represents values that could not be parsed or are not
+///   supported by the current implementation. This is also the default variant.
+///
+/// # Notes
+/// - Vector variants store their length explicitly to preserve shape
+///   information from the original input.
+/// - Matrix variants store both the data and its `(rows, cols)` dimensions.
+/// - This enum is designed for flexibility when parsing loosely-typed
+///   formats such as extended XYZ.
+///
+/// # Derives
+/// - `Debug`, `Clone`, and `Default` are implemented.
+/// - The default value is [`Value::Unsupported`].
 #[derive(Debug, Clone, Default)]
 pub enum Value {
     Integer(Integer),
@@ -209,6 +252,17 @@ pub enum Value {
 }
 
 impl Value {
+    /// Attempts to extract the underlying integer value.
+    ///
+    /// Consumes `self` and returns the contained [`Integer`] if this is
+    /// [`Value::Integer`], otherwise returns `None`.
+    ///
+    /// # Examples
+    /// ```
+    /// use extxyz_types::{Value, Integer};
+    ///
+    /// let v = Value::Integer(Integer::from(42));
+    /// ```
     pub fn as_integer(self) -> Option<Integer> {
         match self {
             Value::Integer(i) => Some(i),
@@ -216,6 +270,17 @@ impl Value {
         }
     }
 
+    /// Attempts to extract the underlying floating-point value.
+    ///
+    /// Consumes `self` and returns the contained [`FloatNum`] if this is
+    /// [`Value::Float`], otherwise returns `None`.
+    ///
+    /// # Examples
+    /// ```
+    /// use extxyz_types::{Value, FloatNum};
+    ///
+    /// let v = Value::Float(FloatNum::from(3.14));
+    /// ```
     pub fn as_float(self) -> Option<FloatNum> {
         match self {
             Value::Float(i) => Some(i),
@@ -223,6 +288,10 @@ impl Value {
         }
     }
 
+    /// Attempts to extract the underlying boolean value.
+    ///
+    /// Consumes `self` and returns the contained [`Boolean`] if this is
+    /// [`Value::Bool`], otherwise returns `None`.
     pub fn as_bool(self) -> Option<Boolean> {
         match self {
             Value::Bool(i) => Some(i),
@@ -230,6 +299,10 @@ impl Value {
         }
     }
 
+    /// Attempts to extract the underlying string value.
+    ///
+    /// Consumes `self` and returns the contained [`Text`] if this is
+    /// [`Value::Str`], otherwise returns `None`.
     pub fn as_text(self) -> Option<Text> {
         match self {
             Value::Str(i) => Some(i),

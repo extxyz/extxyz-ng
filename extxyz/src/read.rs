@@ -22,6 +22,47 @@ use std::{
 };
 
 /// read from a buf reader and return an `FrameReader` which is an interator.
+/// Creates a streaming frame iterator over an extended XYZ input.
+///
+/// This function wraps a mutable buffered reader and returns a [`FrameReader`]
+/// that yields [`Frame`]s one at a time. It is suitable for processing large
+/// `.xyz` files without loading the entire contents into memory.
+///
+/// # Type Parameters
+/// - `R`: A type that implements [`BufRead`], such as `BufReader<File>` or
+///   an in-memory buffer.
+///
+/// # Arguments
+/// - `rd`: A mutable reference to a buffered reader to read frames from.
+///
+/// # Returns
+/// A [`FrameReader`] that implements an iterator-like interface over parsed
+/// frames.
+///
+/// # Notes
+/// - The returned reader borrows `rd` for its lifetime, so `rd` cannot be used
+///   elsewhere while the iterator is alive.
+/// - Frames are parsed lazily as the iterator advances.
+/// - Errors are typically surfaced during iteration (depending on the
+///   [`FrameReader`] implementation).
+///
+/// # Example
+/// ```no_run
+/// use std::fs::File;
+/// use std::io::BufReader;
+/// use extxyz::read_frames;
+///
+/// let file = File::open("input.xyz").unwrap();
+/// let mut reader = BufReader::new(file);
+///
+/// let mut frames = read_frames(&mut reader);
+///
+/// // assuming `FrameReader` implements `Iterator<Item = Result<Frame, _>>`
+/// // for frame in frames {
+/// //     let frame = frame?;
+/// //     // process frame
+/// // }
+/// ```
 pub fn read_frames<'a, R>(rd: &'a mut R) -> FrameReader<'a, R>
 where
     R: BufRead,
@@ -29,6 +70,47 @@ where
     FrameReader::new(rd)
 }
 
+/// Streaming frame reader for extended XYZ input.
+///
+/// `FrameReader` provides an iterator-style interface over [`Frame`]s read
+/// from a buffered input source. It borrows the underlying reader and parses
+/// frames lazily as iteration progresses.
+///
+/// # Type Parameters
+/// - `R`: The underlying reader type, which must implement [`BufRead`].
+///
+/// # Fields
+/// - `rd`: Mutable reference to the buffered reader.
+/// - `finished`: Internal flag indicating whether the end of input has been
+///   reached or no further frames can be parsed.
+///
+/// # Usage
+/// This type is typically constructed via [`read_frames`], and then used
+/// to iterate over frames:
+///
+/// ```no_run
+/// use std::fs::File;
+/// use std::io::BufReader;
+/// use extxyz::read_frames;
+//
+/// let file = File::open("input.xyz").unwrap();
+/// let mut reader = BufReader::new(file);
+///
+/// let frames = read_frames(&mut reader);
+///
+/// // `FrameReader` implements `Iterator<Item = Result<Frame, _>>`
+/// // for frame in frames {
+/// //     let frame = frame?;
+/// //     // process frame
+/// // }
+/// ```
+///
+/// # Notes
+/// - The reader is borrowed for the lifetime `'a`, so it cannot be accessed
+///   elsewhere while the `FrameReader` is in use.
+/// - Frames are parsed on demand; this is efficient for large files.
+/// - Once `finished` is `true`, no further frames will be produced.
+/// - Errors are typically returned during iteration rather than at creation.
 pub struct FrameReader<'a, R> {
     // None as done marker
     rd: &'a mut R,
@@ -64,6 +146,33 @@ where
     }
 }
 
+/// Owned frame reader for extended XYZ input.
+///
+/// `FrameReaderOwned` wraps a reader and incrementally parses [`Frame`]s
+/// from it, maintaining internal state between reads. Unlike borrowing-based
+/// readers, this type *owns* the underlying reader, making it especially
+/// suitable for FFI scenarios such as Python bindings where lifetime
+/// management across language boundaries is required.
+///
+/// # Type Parameters
+/// - `R`: The underlying reader type. Typically implements [`BufRead`]
+///   (e.g., `BufReader<File>`), though this depends on the associated
+///   implementation.
+///
+/// # Fields
+/// - `rd`: The owned reader from which frames are read.
+/// - `finished`: Indicates whether the reader has reached the end of input
+///   or can no longer produce frames.
+///
+/// # Usage
+/// This type is primarily intended for:
+/// - Python bindings (e.g., via PyO3), where ownership simplifies safety.
+/// - Streaming large `.xyz` files frame-by-frame without loading everything
+///   into memory.
+///
+/// # Notes
+/// - Once `finished` is set to `true`, no further frames will be produced.
+/// - Typically used with an iterator-style API (`next()` or similar).
 pub struct FrameReaderOwned<R> {
     rd: R,
     finished: bool,
@@ -96,6 +205,47 @@ where
     }
 }
 
+/// Reads a single frame from a buffered reader in extended XYZ format.
+///
+/// This function attempts to parse exactly one [`Frame`] from the given reader.
+/// It delegates the parsing to an internal implementation and returns the first
+/// successfully parsed frame.
+///
+/// # Type Parameters
+/// - `R`: A type that implements [`BufRead`], such as `BufReader<File>` or
+///   an in-memory buffer.
+///
+/// # Arguments
+/// - `rd`: A mutable reference to a buffered reader to read from.
+///
+/// # Returns
+/// - `Ok(Frame)` if a frame is successfully parsed.
+/// - `Err(ExtxyzError)` if parsing fails or no frame can be read.
+///
+/// # Errors
+/// Returns an [`ExtxyzError`] in the following cases:
+/// - If an I/O error occurs while reading from the input.
+/// - If the input does not contain a valid frame in extended XYZ format.
+/// - If the end of input is reached before any frame could be parsed
+///   (`UnexpectedEof`).
+///
+/// # Notes
+/// - This function reads from the current position of the reader and may
+///   consume input.
+/// - If no frame is found, an `UnexpectedEof` error is returned rather than
+///   `Ok(None)`.
+///
+/// # Example
+/// ```no_run
+/// use std::fs::File;
+/// use std::io::BufReader;
+/// use extxyz::read_frame;
+///
+/// let file = File::open("input.xyz").unwrap();
+/// let mut reader = BufReader::new(file);
+///
+/// let frame = read_frame(&mut reader).unwrap();
+/// ```
 pub fn read_frame<R>(rd: &mut R) -> Result<Frame, ExtxyzError>
 where
     R: BufRead,
@@ -113,7 +263,6 @@ pub(crate) fn _read_frame_native_new<R>(
     rd: &mut R,
     comment_override: Option<&str>,
 ) -> io::Result<Option<Frame>>
-// XXX: still IResult if it is better
 where
     R: BufRead,
 {

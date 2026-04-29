@@ -16,7 +16,7 @@ struct Value(InnerValue);
 impl<'py> IntoPyObject<'py> for Value {
     type Target = PyAny;
     type Output = Bound<'py, PyAny>;
-    // Error can be Infallible because we know the exact type of what Value included so the
+    // Error is Infallible because we know the exact type of what Value included so the
     // conversion to python type is predictable and cannot fail.
     type Error = std::convert::Infallible;
 
